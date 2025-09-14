@@ -1,0 +1,16 @@
+services:
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: logs_user
+      POSTGRES_PASSWORD: logs_pass
+      POSTGRES_DB: logs_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
