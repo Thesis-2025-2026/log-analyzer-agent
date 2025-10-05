@@ -1,39 +1,42 @@
-import redis
-import psycopg2
-import json
+import os
+from dotenv import load_dotenv
+from langchain.agents import initialize_agent, AgentType
+from langchain_ollama import ChatOllama
+from agent.tools import buildTools
 
-# Connect to Redis
-r = redis.Redis(host="localhost", port=6379, db=0)
-pubsub = r.pubsub()
-pubsub.subscribe("anomalies")
+load_dotenv()
 
-# Connect to Postgres
-conn = psycopg2.connect(
-    dbname="logs_db",
-    user="logs_user",
-    password="logs_pass",
-    host="localhost",
-    port=5433
+def makeLlm():
+    baseUrl = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    modelName = os.getenv("MODEL_NAME", "phi3:mini")
+    return ChatOllama(model=modelName, temperature=0, base_url=baseUrl)
+
+llm = makeLlm()
+tools = buildTools()
+agent = initialize_agent(
+    tools=tools,
+    llm=llm,
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True,
 )
-cur = conn.cursor()
 
-print("AI Agent listening for anomalies...")
+def handleManualLog(logText: str) -> str:
+    prompt = (
+        "You are a log-analysis assistant. Given the log payload, identify severity, "
+        "probable root cause, and recommended next steps. Use tools when helpful.\n"
+        f"Log text:\n{logText}"
+    )
+    result = agent.invoke(prompt)
+    return result["output"]
 
-for message in pubsub.listen():
-    if message["type"] == "message":
-        anomaly = json.loads(message["data"])
-        print("\n🚨 AI Agent received anomaly:", anomaly)
+def main():
+    print("Manual Log Analysis Agent Ready (type 'quit' to exit')")
+    while True:
+        userLog = input("\nLog> ").strip()
+        if userLog.lower() in {"quit", "exit"}:
+            break
+        analysis = handleManualLog(userLog)
+        print(f"\nAnalysis:\n{analysis}")
 
-        # Example: get last 5 logs with the same level as the anomaly
-        cur.execute("""
-            SELECT timestamp, raw
-            FROM logs
-            WHERE level = %s
-            ORDER BY timestamp DESC
-            LIMIT 5;
-        """, (anomaly["level"],))
-
-        context = cur.fetchall()
-        print("📜 Context logs (last 5 with same level):")
-        for row in context:
-            print(row)
+if __name__ == "__main__":
+    main()

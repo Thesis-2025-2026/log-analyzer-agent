@@ -1,11 +1,14 @@
 services:
   redis:
     image: redis:7
+    pull_policy: always
     ports:
       - "6379:6379"
+    restart: "no"
 
   postgres:
     image: postgres:15
+    pull_policy: always
     environment:
       POSTGRES_USER: logs_user
       POSTGRES_PASSWORD: logs_pass
@@ -13,4 +16,29 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    restart: "no"
+
+  ollama:
+    image: ollama/ollama:latest
+    pull_policy: always
+    ports:
+      - "11434:11434"
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ollama-init:
+    image: ollama/ollama:latest
+    pull_policy: always
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-lc"]
+    command: "ollama pull phi3:mini"
+    restart: "no"

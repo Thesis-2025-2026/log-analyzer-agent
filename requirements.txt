@@ -1,2 +1,6 @@
 redis
 psycopg2-binary
+python-dotenv
+langchain
+langchain-community
+langchain-ollama
