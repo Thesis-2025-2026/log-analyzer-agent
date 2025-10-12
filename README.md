@@ -1,7 +1,7 @@
 # Log Analyzer Agent
 
 Project structure
-- `agent/agent.py`: main agent entry (LangChain + Ollama).
+- `agent/agent.py`: main agent entry (local Ollama via OpenAI-compatible API).
 - `agent/tools/`: tool functions used by the agent (e.g., `logParser.py`).
 
 Docker compose
@@ -9,6 +9,10 @@ Docker compose
 - Includes an init step to pull the model; containers are ephemeral.
 
 Setup
-- Create `.env` and paste the contents of `exampleEnv`.
+- Create `.env` and paste the contents of `.exampleEnv`.
+- Ensure env for local model:
+  - `OPENAI_BASE_URL=http://localhost:11434/v1`
+  - `OPENAI_API_KEY=ollama` (any non-empty string)
+  - `MODEL_NAME=phi3:mini` (or your chosen Ollama model)
 - Run `make up` to start services and prepare the model.
 - Use `make agent` to talk to the agent in the terminal.
