@@ -1,8 +1,8 @@
 from typing import Callable, Dict
-from agent.tools.logParser import summarizeLog
+from agent.tools.log_parser import summarize_log
 
 
-def buildTools() -> Dict[str, Callable[[str], str]]:
+def build_tools() -> Dict[str, Callable[[str], str]]:
     return {
-        "summarizeLog": summarizeLog,
+        "summarize_log": summarize_log,
     }

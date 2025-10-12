@@ -2,7 +2,7 @@
 
 Project structure
 - `agent/agent.py`: main agent entry (local Ollama via OpenAI-compatible API).
-- `agent/tools/`: tool functions used by the agent (e.g., `logParser.py`).
+- `agent/tools/`: tool functions used by the agent (e.g., `log_parser.py`).
 
 Docker compose
 - Starts Redis (`6379`), Postgres (`5433`), and Ollama (`11434`).
