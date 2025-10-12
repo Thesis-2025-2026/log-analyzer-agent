@@ -1,7 +1,8 @@
 create a .env file on the root dir and paste the contents of this file in to the .env file
 
-# Ollama settings
-OLLAMA_HOST=http://localhost:11434
+# Local LLM via Ollama (OpenAI-compatible)
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama
 MODEL_NAME=phi3:mini
 
 # Postgres

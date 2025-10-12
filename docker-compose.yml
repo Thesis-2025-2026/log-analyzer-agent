@@ -40,5 +40,5 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
     entrypoint: ["/bin/sh", "-lc"]
-    command: "ollama pull phi3:mini"
+    command: "ollama pull ${MODEL_NAME}"
     restart: "no"
