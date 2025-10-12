@@ -7,10 +7,18 @@ DOCKER = DOCKER_API_VERSION=$(API) docker
 DC     = DOCKER_API_VERSION$(and $(API),=$(API)) docker compose -p $(PROJECT)
 PY     = python
 
-MODEL_NAME ?= phi3:mini
-OLLAMA_HOST ?= http://localhost:11434
+# Read MODEL_NAME / OLLAMA_HOST from .env if present, else use sane defaults
+MODEL_NAME_FILE := $(shell awk -F= '/^MODEL_NAME=/{print $$2}' .env 2>/dev/null)
+MODEL_NAME ?= $(if $(MODEL_NAME_FILE),$(MODEL_NAME_FILE),llama3.1:8b-instruct-q4_K_M)
 
-.PHONY: up _clean docker agent down clean hardclean _wait_ollama _pull_model _wait_model
+OLLAMA_HOST_FILE := $(shell awk -F= '/^OPENAI_BASE_URL=/{print $$2}' .env 2>/dev/null)
+# .env uses OPENAI_BASE_URL with /v1; the daemon is at the same host without /v1
+OLLAMA_HOST ?= $(if $(OLLAMA_HOST_FILE),$(subst /v1,,$(OLLAMA_HOST_FILE)),http://localhost:11434)
+
+# Python module to run (package with __main__.py)
+PYMODULE ?= agent_system
+
+.PHONY: up _clean docker agent down clean _wait_ollama _pull_model _wait_model
 
 up:
 	@echo "🔧 Using Docker API $(API)"
@@ -20,8 +28,8 @@ up:
 	@$(MAKE) _wait_ollama
 	@$(MAKE) _pull_model
 	@$(MAKE) _wait_model
-	@echo "🤖 Launching agent…"
-	@$(PY) -m agent
+	@echo "🤖 Launching $(PYMODULE)…"
+	@$(PY) -m $(PYMODULE)
 
 _clean:
 	@echo "🧹 Cleaning project '$(PROJECT)'…"
@@ -42,26 +50,28 @@ _wait_ollama:
 	@echo "✅ Ollama is up."
 
 _pull_model:
-	@echo "⬇️  Ensuring model '$(MODEL_NAME)' is present…"
-	@$(DC) exec -T ollama ollama pull $(MODEL_NAME) >/dev/null 2>&1 || \
-	  $(DC) run --rm -e OLLAMA_HOST=$(OLLAMA_HOST) ollama-init >/dev/null 2>&1 || true
-	@echo "✅ Pull initiated or model already present."
+	@echo "⬇️  Pulling model '$(MODEL_NAME)' inside the container…"
+	@$(DC) exec -T ollama sh -lc "ollama show '$(MODEL_NAME)' >/dev/null 2>&1 || ollama pull '$(MODEL_NAME)'" \
+	  || (echo '❌ Failed to pull $(MODEL_NAME)'; exit 1)
+	@echo "✅ Pull finished (or already present)."
 
 _wait_model:
-	@echo "⏳ Waiting for model '$(MODEL_NAME)' to be available…"
+	@echo "⏳ Verifying model '$(MODEL_NAME)' is available…"
 	@i=0; \
-	until curl -s "$(OLLAMA_HOST)/api/tags" | grep -q "\"name\":\"$(MODEL_NAME)\""; do \
+	while true; do \
+	  if $(DC) exec -T ollama sh -lc "ollama show '$(MODEL_NAME)' >/dev/null 2>&1"; then \
+	    echo "✅ Model '$(MODEL_NAME)' ready."; break; \
+	  fi; \
 	  i=$$((i+1)); \
 	  if [ $$i -gt 300 ]; then echo "❌ Model '$(MODEL_NAME)' not available"; exit 1; fi; \
 	  sleep 2; \
 	done
-	@echo "✅ Model '$(MODEL_NAME)' ready."
 
 docker:
 	@$(DC) up -d --build
 
 agent:
-	@$(PY) -m agent
+	@$(PY) -m $(PYMODULE)
 
 down:
 	@$(DC) down || true
