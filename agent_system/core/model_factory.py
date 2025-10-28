@@ -11,5 +11,10 @@ def create_model():
         model_type=settings.MODEL_NAME,
         url=settings.OPENAI_BASE_URL,
         api_key=settings.OPENAI_API_KEY,
-        model_config_dict=ChatGPTConfig(temperature=settings.TEMPERATURE).as_dict(),
+        # Enable streaming so CAMEL emits built-in tool call logs at INFO
+        model_config_dict=ChatGPTConfig(
+            temperature=settings.TEMPERATURE,
+            stream=True,
+            tool_choice="required"
+        ).as_dict(),
     )

@@ -16,3 +16,11 @@ Setup
   - `MODEL_NAME=phi3:mini` (or your chosen Ollama model)
 - Run `make up` to start services and prepare the model.
 - Use `make agent` to talk to the agent in the terminal.
+
+Example Prompt
+```
+extract key information from this log:
+
+{"level": "error", "service": "payment-service", "message": "Failed to process transaction ID 23984 due to timeout"}
+```
+
