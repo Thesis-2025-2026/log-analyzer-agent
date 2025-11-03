@@ -2,10 +2,21 @@ from camel.models import ModelFactory
 from camel.types import ModelPlatformType
 from camel.configs import ChatGPTConfig
 from agent_system.config import settings
+import os
 
 
 def create_model():
     platform = getattr(ModelPlatformType, settings.MODEL_PLATFORM)
+    extra_kwargs = {}
+    if platform == ModelPlatformType.OPENAI:
+        # Pass organization/project when present; required in some accounts
+        org = os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION")
+        project = os.getenv("OPENAI_PROJECT") or os.getenv("OPENAI_PROJECT_ID")
+        if org:
+            extra_kwargs["organization"] = org
+        if project:
+            extra_kwargs["project"] = project
+
     return ModelFactory.create(
         model_platform=platform,
         model_type=settings.MODEL_NAME,
@@ -15,6 +26,7 @@ def create_model():
         model_config_dict=ChatGPTConfig(
             temperature=settings.TEMPERATURE,
             stream=True,
-            tool_choice="required"
+            tool_choice="required",
         ).as_dict(),
+        **extra_kwargs,
     )
