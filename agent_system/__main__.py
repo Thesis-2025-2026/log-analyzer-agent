@@ -1,4 +1,6 @@
 from agent_system.core.registry import get_agent
+from agent_system.core.storage import insert_report
+from agent_system.tools.log_parser import summarize_log
 from camel.logger import set_log_level
 
 
@@ -41,7 +43,26 @@ def analyze_log(agent, log_text: str) -> str:
         )
         attempt += 1
 
-    return (getattr(final_resp.msg, "content", "") or "").strip()
+    content = (getattr(final_resp.msg, "content", "") or "").strip()
+
+    # Best-effort metadata extraction for storage using our local parser tool
+    level = "unknown"
+    service = "unknown"
+    try:
+        parsed = summarize_log(log_text)
+        level = str(parsed.get("level", level))
+        service = str(parsed.get("service", service))
+    except Exception:
+        pass
+
+    # Persist report
+    try:
+        insert_report(level=level, service=service, content=content, raw_log=log_text)
+    except Exception as e:
+        # Non-fatal: keep CLI/API responsive even if DB is down
+        print(f"[warn] failed to store report: {e}")
+
+    return content
 
 
 def main():
