@@ -18,18 +18,12 @@ OLLAMA_HOST ?= $(if $(OLLAMA_HOST_FILE),$(subst /v1,,$(OLLAMA_HOST_FILE)),http:/
 # Python module to run (package with __main__.py)
 PYMODULE ?= agent_system
 
-.PHONY: up _clean docker agent down clean _wait_ollama _pull_model _wait_model
+.PHONY: up _clean docker agent down clean _wait_ollama _pull_model _wait_model server start build-ui watch-ui api
 
 up:
 	@echo "🔧 Using Docker API $(API)"
-	@$(MAKE) _clean
 	@echo "🚀 Starting docker services (detached)…"
 	@$(DC) up -d --build
-	@$(MAKE) _wait_ollama
-	@$(MAKE) _pull_model
-	@$(MAKE) _wait_model
-	@echo "🤖 Launching $(PYMODULE)…"
-	@$(PY) -m $(PYMODULE)
 
 _clean:
 	@echo "🧹 Cleaning project '$(PROJECT)'…"
@@ -72,6 +66,28 @@ docker:
 
 agent:
 	@$(PY) -m $(PYMODULE)
+
+api:
+	@$(PY) -m agent_api
+
+server:
+	@echo "📦 Installing Python dependencies…"
+	@$(PY) -m pip install -r requirements.txt
+	@echo "📦 Installing Node dependencies…"
+	@npm install
+	@echo "🎨 Building Tailwind CSS…"
+	@mkdir -p web/assets
+	@npm run build:css
+	@echo "✅ Server setup complete. Run 'make start' to launch."
+
+start:
+	@$(PY) -m agent_api
+
+build-ui:
+	@npx tailwindcss -i web/src/input.css -o web/assets/styles.css --minify
+
+watch-ui:
+	@npx tailwindcss -i web/src/input.css -o web/assets/styles.css --watch
 
 down:
 	@$(DC) down || true

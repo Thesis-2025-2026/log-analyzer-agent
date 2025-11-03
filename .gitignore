@@ -26,3 +26,4 @@ Thumbs.db
 docker-data/
 
 .env
+node_modules/

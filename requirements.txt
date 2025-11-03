@@ -3,3 +3,5 @@ psycopg2-binary
 python-dotenv
 camel-ai
 openai
+Flask
+flask-cors
