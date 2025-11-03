@@ -4,6 +4,7 @@ import time
 
 from agent_system.core.registry import get_agent
 from agent_system.__main__ import analyze_log
+from agent_system.core.storage import list_reports, get_report
 
 
 def create_app() -> Flask:
@@ -19,6 +20,11 @@ def create_app() -> Flask:
     @app.get("/reports")
     def reports_page():
         return app.send_static_file("reports.html")
+
+    @app.get("/report/<rid>")
+    def report_page(rid: str):
+        # Serve a static detail page; the page fetches /api/reports/<rid> client-side
+        return app.send_static_file("report.html")
 
     @app.get("/health")
     def health():
@@ -60,13 +66,31 @@ def create_app() -> Flask:
             }), 500
 
     @app.get("/api/reports")
-    def list_reports():
-        # TODO: implement reports listing (paginate, filter)
-        return jsonify({"items": [], "total": 0}), 200
+    def api_list_reports():
+        try:
+            # Simple pagination params
+            try:
+                limit = int(request.args.get("limit", "50"))
+                offset = int(request.args.get("offset", "0"))
+            except ValueError:
+                limit, offset = 50, 0
+            items = list_reports(limit=limit, offset=offset)
+            return jsonify({"items": items, "limit": limit, "offset": offset}), 200
+        except Exception as e:
+            return jsonify({"error": "Failed to fetch reports", "details": str(e)}), 500
 
     @app.get("/api/reports/<rid>")
-    def get_report(rid: str):
-        # TODO: implement single report retrieval
-        return jsonify({"id": rid, "status": "todo", "message": "Not implemented"}), 200
+    def api_get_report(rid: str):
+        try:
+            try:
+                rid_int = int(rid)
+            except ValueError:
+                return jsonify({"error": "Invalid report id"}), 400
+            data = get_report(rid_int)
+            if not data:
+                return jsonify({"error": "Report not found"}), 404
+            return jsonify(data), 200
+        except Exception as e:
+            return jsonify({"error": "Failed to fetch report", "details": str(e)}), 500
 
     return app

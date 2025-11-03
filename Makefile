@@ -18,12 +18,16 @@ OLLAMA_HOST ?= $(if $(OLLAMA_HOST_FILE),$(subst /v1,,$(OLLAMA_HOST_FILE)),http:/
 # Python module to run (package with __main__.py)
 PYMODULE ?= agent_system
 
-.PHONY: up _clean docker agent down clean _wait_ollama _pull_model _wait_model server start build-ui watch-ui api
+.PHONY: up _clean docker agent down clean _wait_ollama _pull_model _wait_model server start build-ui watch-ui api migrate
 
 up:
 	@echo "🔧 Using Docker API $(API)"
 	@echo "🚀 Starting docker services (detached)…"
 	@$(DC) up -d --build
+	@$(MAKE) _wait_ollama
+	@$(MAKE) _pull_model
+	@$(MAKE) _wait_model
+	@echo "✅ Infra and model ready: $(MODEL_NAME)"
 
 _clean:
 	@echo "🧹 Cleaning project '$(PROJECT)'…"
@@ -82,6 +86,10 @@ server:
 
 start:
 	@$(PY) -m agent_api
+
+## Apply DB migrations (re-run init SQL safely)
+migrate:
+	@$(DC) exec -T postgres sh -lc "psql -U $$POSTGRES_USER -d $$POSTGRES_DB -f /docker-entrypoint-initdb.d/init_db.sql"
 
 build-ui:
 	@npx tailwindcss -i web/src/input.css -o web/assets/styles.css --minify

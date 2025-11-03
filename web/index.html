@@ -28,19 +28,8 @@
         <button id="newBtn" class="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">New chat</button>
       </div>
 
-      <!-- Messages list (includes a bit of starter content for mock preview) -->
-      <ul id="messages" class="flex-1 space-y-4 overflow-y-auto p-4 bg-gradient-to-b from-white to-gray-50">
-        <li class="rounded-xl border p-4 shadow-sm bg-white border-blue-200" style="border-left-width:4px;border-left-color:#93c5fd;">
-          <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-blue-700">User</div>
-          <div class="whitespace-pre-wrap leading-6">Paste a log or JSON to analyze?</div>
-        </li>
-        <li class="rounded-xl border p-4 shadow-sm bg-white border-emerald-200" style="border-left-width:4px;border-left-color:#86efac;">
-          <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">Report</div>
-          <div class="whitespace-pre-wrap leading-6">Ready when you are. Provide a log snippet or a JSON object. I will parse and summarize it.</div>
-        </li>
-      </ul>
+      <ul id="messages" class="flex-1 space-y-4 overflow-y-auto p-4 bg-gradient-to-b from-white to-gray-50"></ul>
 
-      <!-- Composer (active) -->
       <div class="border-t p-3">
         <div class="flex items-start gap-2">
           <textarea id="input" rows="3" placeholder="Paste log or JSON… (Shift+Enter = newline)" class="h-24 w-full resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-inner focus:border-gray-400 focus:outline-none"></textarea>
@@ -134,4 +123,3 @@
   </script>
 </body>
 </html>
-
