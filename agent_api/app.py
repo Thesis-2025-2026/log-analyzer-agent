@@ -34,7 +34,7 @@ def create_app() -> Flask:
     def api_query():
         data = request.get_json(silent=True) or {}
         query = data.get("query") or data.get("text") or data.get("log")
-        agent_name = data.get("agent") or "log_analysis"
+        agent_name = data.get("agent") or "workforce"
 
         if not isinstance(query, str) or not query.strip():
             return jsonify({"error": "Missing 'query' in JSON body"}), 400
