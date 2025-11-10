@@ -1,17 +1,36 @@
-import redis
+import os
 import json
+import redis
+from filters import run_filters
 
-r = redis.Redis(host="localhost", port=6379, db=0)
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 
-pubsub = r.pubsub()
-pubsub.subscribe("logs")
+LOGS_CHANNEL = os.getenv("LOGS_CHANNEL", "logs")
+ANOM_CHANNEL = os.getenv("ANOM_CHANNEL", "anomalies")
 
-print("Detector is running...")
 
-for message in pubsub.listen():
-    if message["type"] == "message":
-        log = json.loads(message["data"])
-        print("Detector received:", log)
+def main() -> None:
+    r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+    pubsub = r.pubsub(ignore_subscribe_messages=True)
+    pubsub.subscribe(LOGS_CHANNEL)
 
-        if log.get("level") == "ERROR":
-            r.publish("anomalies", json.dumps(log))
+    print(f"Detector is running. Subscribed to '{LOGS_CHANNEL}' → publishing to '{ANOM_CHANNEL}'")
+
+    for message in pubsub.listen():
+        data_str = message.get("data")
+        try:
+            log = json.loads(data_str)
+        except json.JSONDecodeError:
+            continue
+
+        if run_filters(log):
+            try:
+                r.publish(ANOM_CHANNEL, json.dumps(log))
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    main()

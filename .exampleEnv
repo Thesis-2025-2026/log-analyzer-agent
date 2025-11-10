@@ -10,3 +10,19 @@ POSTGRES_USER=logs_user
 POSTGRES_PASSWORD=logs_pass
 POSTGRES_DB=logs_db
 
+
+# Redis / PubSub
+# Redis connection for detector and filters
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+
+# Pub/Sub channels
+LOGS_CHANNEL=logs
+ANOM_CHANNEL=anomalies
+
+# Similarity filter (dedup) settings
+# Time window in seconds to remember similar patterns
+SIM_TTL_SEC=600
+# Key prefix used in Redis for similarity fingerprints
+SIM_NAMESPACE=det:sim
