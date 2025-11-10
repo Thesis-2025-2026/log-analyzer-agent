@@ -9,13 +9,13 @@ from . import similarity_filter
 # 2) Severity: drop if info/debug -> else continue
 # 3) Similarity: drop if similar within TTL -> else publish
 def run_filters(log: Dict) -> bool:
-    if regex_filter.run(log) is not True:
+    if regex_filter.run(log):
         return False
 
-    if severity_filter.run(log) is False:
+    if severity_filter.run(log):
         return False
 
-    sim: Optional[bool] = similarity_filter.run(log)
-    if sim is False:
-        return False
-    return True
+    sim = similarity_filter.run(log)
+    if sim:
+        return True
+    return False
