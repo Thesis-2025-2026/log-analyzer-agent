@@ -26,3 +26,7 @@ ANOM_CHANNEL=anomalies
 SIM_TTL_SEC=600
 # Key prefix used in Redis for similarity fingerprints
 SIM_NAMESPACE=det:sim
+# Vector DB
+QDRANT_URL=xxxxxxxxxxxxxxxxxxxx
+QDRANT_API_KEY=xxxxxxxxxxxxxxxxx
+QDRANT_COLLECTION=log_fixes
