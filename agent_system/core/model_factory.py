@@ -1,12 +1,12 @@
 from camel.models import ModelFactory
 from camel.types import ModelPlatformType
 from camel.configs import ChatGPTConfig
-from agent_system.config import settings
+from agent_system.config import settings as config_settings
 import os
 
 
 def create_model():
-    platform = getattr(ModelPlatformType, settings.MODEL_PLATFORM)
+    platform = getattr(ModelPlatformType, config_settings.MODEL_PLATFORM)
     extra_kwargs = {}
     if platform == ModelPlatformType.OPENAI:
         # Pass organization/project when present; required in some accounts
@@ -19,12 +19,12 @@ def create_model():
 
     return ModelFactory.create(
         model_platform=platform,
-        model_type=settings.MODEL_NAME,
-        url=settings.OPENAI_BASE_URL,
-        api_key=settings.OPENAI_API_KEY,
+        model_type=config_settings.MODEL_NAME,
+        url=config_settings.OPENAI_BASE_URL,
+        api_key=config_settings.OPENAI_API_KEY,
         # Enable streaming so CAMEL emits built-in tool call logs at INFO
         model_config_dict=ChatGPTConfig(
-            temperature=settings.TEMPERATURE,
+            temperature=config_settings.TEMPERATURE,
             stream=True,
             tool_choice="required",
         ).as_dict(),

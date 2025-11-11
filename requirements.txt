@@ -5,3 +5,5 @@ camel-ai
 openai
 Flask
 flask-cors
+requests
+qdrant-client
