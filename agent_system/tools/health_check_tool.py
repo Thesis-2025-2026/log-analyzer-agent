@@ -2,8 +2,7 @@
 Health Check Tool for pinging associated services to determine which are alive or dead.
 """
 import requests
-from typing import Dict, Any, List, Optional
-import os
+from typing import Dict, Any
 import socket
 from urllib.parse import urlparse
 
