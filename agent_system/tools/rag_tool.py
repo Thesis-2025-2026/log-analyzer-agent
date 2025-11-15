@@ -7,7 +7,6 @@ import os
 from camel.retrievers import VectorRetriever
 from camel.embeddings import OpenAIEmbedding
 from camel.storages import QdrantStorage
-from qdrant_client import QdrantClient
 
 
 # Initialize vector storage and retriever

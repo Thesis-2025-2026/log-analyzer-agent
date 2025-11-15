@@ -1,6 +1,3 @@
-# Import settings first to configure logging before other imports
-from agent_system.config import settings  # noqa: F401
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import time

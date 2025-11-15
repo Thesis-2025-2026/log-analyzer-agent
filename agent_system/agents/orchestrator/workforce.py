@@ -2,146 +2,225 @@
 Workforce orchestrator for multi-agent log analysis.
 """
 import logging
-from camel.societies.workforce import Workforce
-from camel.tasks import Task
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional, Tuple
 from camel.agents import ChatAgent
-from agent_system.core.model_factory import create_model
-from agent_system.prompts.orchestrator import get_orchestrator_prompt
 from agent_system.agents.internal_knowledge import make_internal_knowledge_agent
 from agent_system.agents.error_reasoner import make_error_reasoner_agent
 
 logger = logging.getLogger(__name__)
 
 
-def create_log_analysis_workforce() -> Workforce:
+def _execute_agent_with_retry(agent: ChatAgent, prompt: str, agent_name: str, max_retries: int = 3) -> Tuple[Optional[str], Optional[str]]:
     """
-    Create and configure a Workforce for log analysis tasks.
-    
-    The workforce consists of:
-    - Coordinator Agent: Delegates tasks to specialized agents
-    - Task Agent: Decomposes complex tasks into subtasks
-    - Internal Knowledge Worker: Handles database queries and RAG searches
-    - Error Reasoner Worker: Handles severity analysis and health checks
-    """
-    model = create_model()
-    
-    # Create coordinator agent with orchestrator prompt
-    coordinator_prompt = get_orchestrator_prompt()
-    coordinator_agent = ChatAgent(
-        system_message=coordinator_prompt,
-        model=model,
-    )
-    
-    # Create task agent (can use same model and a task decomposition prompt)
-    task_agent = ChatAgent(
-        system_message=(
-            "You are a task decomposition agent. Your role is to break down complex "
-            "log analysis tasks into smaller, manageable subtasks that can be assigned "
-            "to specialized agents. Each subtask should be clear, specific, and actionable.\n\n"
-            "CRITICAL: When decomposing log analysis tasks, you MUST include the complete log data "
-            "(the JSON object or log text) in EACH subtask that needs it. Workers cannot access "
-            "the parent task context, so each subtask must be fully self-contained with all "
-            "necessary information including the log data.\n\n"
-            "For example, if the original task contains log data like:\n"
-            '{"level": "error", "service": "orders", "message": "Database connection timeout"}\n\n'
-            "Then each subtask that needs to analyze this log MUST include this JSON data in its content, "
-            "not just references to it. The subtask should look like:\n"
-            '"Assess the severity of the error in this log: {\"level\": \"error\", \"service\": \"orders\", \"message\": \"Database connection timeout\"}. '
-            'The output should be a severity level and explanation."'
-        ),
-        model=model,
-    )
-    
-    # Create the workforce
-    workforce = Workforce(
-        description=(
-            "A multi-agent system for intelligent log analysis. "
-            "Processes flagged logs by coordinating specialized agents to gather context, "
-            "analyze severity, check service health, and provide comprehensive analysis reports."
-        ),
-        coordinator_agent=coordinator_agent,
-        task_agent=task_agent,
-        share_memory=True,  # Workers can share context
-        use_structured_output_handler=True,
-    )
-    
-    # Add specialized workers
-    workforce.add_single_agent_worker(
-        description=(
-            "An agent specialized in retrieving historical logs from the database "
-            "and searching the knowledge base for similar past errors and fixes using RAG. "
-            "Use this agent when you need historical context, pattern matching, or "
-            "knowledge base lookups."
-        ),
-        worker=make_internal_knowledge_agent(),
-    )
-    
-    workforce.add_single_agent_worker(
-        description=(
-            "An agent specialized in analyzing error severity and checking the health "
-            "status of associated services. Use this agent when you need to assess "
-            "error impact, determine severity levels, or verify service availability."
-        ),
-        worker=make_error_reasoner_agent(),
-    )
-    
-    return workforce
-
-
-def analyze_log_with_workforce(workforce: Workforce, log_data: str) -> str:
-    """
-    Analyze a log using the workforce orchestration system.
+    Execute an agent with retry logic.
     
     Args:
-        workforce: The configured Workforce instance
-        log_data: The log data to analyze (can be JSON string or raw log text)
+        agent: The ChatAgent instance to execute
+        prompt: The prompt to send to the agent
+        agent_name: Name of the agent for logging
+        max_retries: Maximum number of retry attempts
     
     Returns:
-        The analysis result as a string
+        Tuple of (result_content, error_message). If successful, result_content is set and error_message is None.
+        If failed after all retries, result_content is None and error_message contains the error.
     """
-    task = Task(
-        content=(
-            f"Analyze the following log entry and provide a comprehensive analysis. "
-            f"Include historical context, severity assessment, service health checks, "
-            f"and actionable recommendations.\n\n"
-            f"Log data:\n{log_data}"
-        ),
-        id="log_analysis_task",
+    last_error = None
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"[{agent_name}] Attempt {attempt}/{max_retries}")
+            response = agent.step(prompt)
+            
+            # Extract content from response
+            content = None
+            if hasattr(response, 'msg') and hasattr(response.msg, 'content'):
+                content = getattr(response.msg, 'content', '') or ''
+            elif hasattr(response, 'content'):
+                content = response.content or ''
+            elif isinstance(response, str):
+                content = response
+            else:
+                # Try to get content from response object
+                content = str(response)
+            
+            if content and content.strip():
+                logger.info(f"[{agent_name}] Successfully completed on attempt {attempt}")
+                return content.strip(), None
+            else:
+                raise ValueError(f"Empty response from {agent_name}")
+                
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"[{agent_name}] Attempt {attempt}/{max_retries} failed: {last_error}")
+            
+            if attempt < max_retries:
+                logger.info(f"[{agent_name}] Retrying...")
+            else:
+                logger.error(f"[{agent_name}] All {max_retries} attempts failed. Last error: {last_error}")
+    
+    return None, f"Failed after {max_retries} attempts: {last_error}"
+
+
+def analyze_log_direct(log_data: str, max_retries: int = 3) -> str:
+    """
+    Analyze a log using direct agent orchestration (simpler than Workforce).
+    
+    Runs both Internal Knowledge and Error Reasoner agents in parallel with retry logic,
+    then generates a summary from their results.
+    
+    Args:
+        log_data: The log data to analyze (can be JSON string or raw log text)
+        max_retries: Maximum number of retry attempts for each agent (default: 3)
+    
+    Returns:
+        The analysis result as a formatted summary string
+    """
+    logger.info("Starting direct log analysis (parallel execution)")
+    logger.debug(f"Log data: {log_data[:200]}...")
+    
+    # Construct task prompts for each agent
+    internal_knowledge_prompt = (
+        f"Retrieve historical logs and similar past errors related to this log entry. "
+        f"Search the knowledge base for similar past errors and fixes using RAG. "
+        f"Provide a summary of relevant historical context and any known fixes.\n\n"
+        f"Log data:\n{log_data}"
     )
     
-    logger.info(f"Processing task: {task.id}")
-    logger.debug(f"Task content: {task.content[:200]}...")
+    error_reasoner_prompt = (
+        f"Assess the severity of this error and check the health status of associated services. "
+        f"Determine the error impact, severity level, and verify service availability. "
+        f"Provide a clear assessment with severity level and explanation.\n\n"
+        f"Log data:\n{log_data}"
+    )
     
-    try:
-        # Process the task through the workforce
-        result_task = workforce.process_task(task=task)
+    # Create agents
+    logger.info("Creating agents...")
+    internal_knowledge_agent = make_internal_knowledge_agent()
+    error_reasoner_agent = make_error_reasoner_agent()
+    
+    # Execute agents in parallel
+    logger.info("Executing agents in parallel...")
+    internal_knowledge_result = None
+    error_reasoner_result = None
+    internal_knowledge_error = None
+    error_reasoner_error = None
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        # Submit both tasks
+        future_ik = executor.submit(
+            _execute_agent_with_retry,
+            internal_knowledge_agent,
+            internal_knowledge_prompt,
+            "Internal Knowledge Agent",
+            max_retries
+        )
+        future_er = executor.submit(
+            _execute_agent_with_retry,
+            error_reasoner_agent,
+            error_reasoner_prompt,
+            "Error Reasoner Agent",
+            max_retries
+        )
         
-        # Log task state and result
-        logger.info(f"Task {result_task.id} completed with state: {result_task.state}")
-        
-        # Check for failed subtasks
-        if hasattr(result_task, 'subtasks') and result_task.subtasks:
-            failed_tasks = [t for t in result_task.subtasks if hasattr(t, 'state') and t.state == 'FAILED']
-            if failed_tasks:
-                logger.warning(f"Found {len(failed_tasks)} failed subtasks:")
-                for failed_task in failed_tasks:
-                    logger.warning(f"  - Task {failed_task.id}: {failed_task.content[:100]}...")
-                    if hasattr(failed_task, 'error') and failed_task.error:
-                        logger.warning(f"    Error: {failed_task.error}")
-        
-        # Return result or provide fallback message
-        if result_task.result:
-            return result_task.result
+        # Wait for both to complete and collect results
+        for future in as_completed([future_ik, future_er]):
+            try:
+                result, error = future.result()
+                # Determine which agent this result belongs to
+                if future == future_ik:
+                    internal_knowledge_result = result
+                    internal_knowledge_error = error
+                else:
+                    error_reasoner_result = result
+                    error_reasoner_error = error
+            except Exception as e:
+                logger.error(f"Unexpected error in parallel execution: {e}", exc_info=True)
+                # Try to determine which future failed
+                if future == future_ik:
+                    internal_knowledge_error = f"Unexpected error: {str(e)}"
+                else:
+                    error_reasoner_error = f"Unexpected error: {str(e)}"
+    
+    # Generate summary
+    logger.info("Generating summary from agent results...")
+    summary = _generate_direct_summary(
+        internal_knowledge_result,
+        error_reasoner_result,
+        log_data,
+        {
+            'internal_knowledge': internal_knowledge_error,
+            'error_reasoner': error_reasoner_error
+        }
+    )
+    
+    return summary
+
+
+def _generate_direct_summary(
+    internal_knowledge_result: Optional[str],
+    error_reasoner_result: Optional[str],
+    log_data: str,
+    errors: dict
+) -> str:
+    """
+    Generate a summary from direct agent execution results.
+    
+    Args:
+        internal_knowledge_result: Result from Internal Knowledge Agent (None if failed)
+        error_reasoner_result: Result from Error Reasoner Agent (None if failed)
+        log_data: Original log data
+        errors: Dictionary with error messages for each agent (key: agent name, value: error message)
+    
+    Returns:
+        Formatted summary string
+    """
+    summary_parts = []
+    summary_parts.append("=" * 80)
+    summary_parts.append("LOG ANALYSIS SUMMARY")
+    summary_parts.append("=" * 80)
+    summary_parts.append(f"\nOriginal Log:\n{log_data}\n")
+    summary_parts.append("-" * 80)
+    summary_parts.append("\nAnalysis Results:\n")
+    
+    # Internal Knowledge Agent results
+    summary_parts.append("\n[Internal Knowledge Agent]")
+    if internal_knowledge_result:
+        summary_parts.append("Status: ✓ Completed")
+        summary_parts.append(f"Result:\n{internal_knowledge_result}\n")
+    else:
+        summary_parts.append("Status: ✗ Failed")
+        if errors.get('internal_knowledge'):
+            summary_parts.append(f"Error: {errors['internal_knowledge']}\n")
         else:
-            error_msg = "Analysis completed but no result returned."
-            if hasattr(result_task, 'state') and result_task.state == 'FAILED':
-                error_msg += f" Task state: {result_task.state}"
-                if hasattr(result_task, 'error') and result_task.error:
-                    error_msg += f". Error: {result_task.error}"
-            logger.warning(error_msg)
-            return error_msg
-            
-    except Exception as e:
-        logger.error(f"Error processing task {task.id}: {str(e)}", exc_info=True)
-        return f"Error during analysis: {str(e)}"
+            summary_parts.append("Error: Unknown error occurred\n")
+    summary_parts.append("-" * 80)
+    
+    # Error Reasoner Agent results
+    summary_parts.append("\n[Error Reasoner Agent]")
+    if error_reasoner_result:
+        summary_parts.append("Status: ✓ Completed")
+        summary_parts.append(f"Result:\n{error_reasoner_result}\n")
+    else:
+        summary_parts.append("Status: ✗ Failed")
+        if errors.get('error_reasoner'):
+            summary_parts.append(f"Error: {errors['error_reasoner']}\n")
+        else:
+            summary_parts.append("Error: Unknown error occurred\n")
+    summary_parts.append("-" * 80)
+    
+    # Final status
+    both_completed = internal_knowledge_result and error_reasoner_result
+    one_completed = (internal_knowledge_result or error_reasoner_result) and not both_completed
+    
+    summary_parts.append("\n[Summary Status]")
+    if both_completed:
+        summary_parts.append("✓ Both specialized agents (Internal Knowledge and Error Reasoner) have completed their analysis.")
+    elif one_completed:
+        summary_parts.append("⚠ Partial completion: One agent completed successfully, one failed.")
+    else:
+        summary_parts.append("✗ Both agents failed to complete their analysis.")
+    summary_parts.append("=" * 80)
+    
+    return "\n".join(summary_parts)
 
