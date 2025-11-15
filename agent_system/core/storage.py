@@ -2,6 +2,7 @@ import os
 from typing import Any, Dict, List, Optional
 import psycopg2
 import psycopg2.extras
+from psycopg2.extras import Json as PgJson
 
 
 def _db_params() -> Dict[str, Any]:
@@ -62,3 +63,18 @@ def get_report(report_id: int) -> Optional[Dict[str, Any]]:
             row = cur.fetchone()
             return dict(row) if row else None
 
+
+def insert_log(level: Optional[str], raw: Dict[str, Any]) -> Dict[str, Any]:
+    params = _db_params()
+    with psycopg2.connect(**params) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO logs (level, raw)
+                VALUES (%s, %s)
+                RETURNING id, timestamp, level
+                """,
+                (level, PgJson(raw)),
+            )
+            row = cur.fetchone()
+            return dict(row)
