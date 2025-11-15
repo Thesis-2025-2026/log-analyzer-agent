@@ -1,6 +1,9 @@
 """
 Connect to the detector module and process flagged logs using the Workforce orchestration system.
 """
+# Import settings first to configure logging before other imports
+from agent_system.config import settings  # noqa: F401
+
 import redis
 import json
 from agent_system.agents.orchestrator import create_log_analysis_workforce, analyze_log_with_workforce

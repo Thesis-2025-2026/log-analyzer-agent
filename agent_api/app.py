@@ -1,3 +1,6 @@
+# Import settings first to configure logging before other imports
+from agent_system.config import settings  # noqa: F401
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import time
@@ -40,7 +43,7 @@ def create_app() -> Flask:
             return jsonify({"error": "Missing 'query' in JSON body"}), 400
 
         if not isinstance(agent_name, str) or not agent_name.strip():
-            agent_name = "log_analysis"
+            agent_name = "log_analysis" #FIXME: this agent does not exist anymore
 
         start = time.time()
         try:
