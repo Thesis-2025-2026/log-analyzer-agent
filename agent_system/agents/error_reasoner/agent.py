@@ -22,7 +22,6 @@ def make_error_reasoner_agent() -> ChatAgent:
     return ChatAgent(
         system_message=system_prompt,
         model=model,
-        # FIXME: enable tools when check_service_health is fixed
-        # tools=tools,
+        tools=tools, 
     )
 

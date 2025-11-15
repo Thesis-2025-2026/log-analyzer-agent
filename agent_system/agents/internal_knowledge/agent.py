@@ -6,7 +6,7 @@ from camel.toolkits import FunctionTool
 from agent_system.core.model_factory import create_model
 from agent_system.prompts.internal_knowledge import get_internal_knowledge_prompt
 from agent_system.tools.db_tool import query_logs, get_logs_by_error_pattern
-from agent_system.tools.rag_tool import search_fixes_for_error, add_fix_to_knowledge_base
+from agent_system.tools.rag_tool import search_fixes_for_error
 
 
 def make_internal_knowledge_agent() -> ChatAgent:
@@ -17,13 +17,13 @@ def make_internal_knowledge_agent() -> ChatAgent:
     tools = [
         FunctionTool(query_logs),
         FunctionTool(get_logs_by_error_pattern),
-        FunctionTool(search_fixes_for_error), # goes to the internal Vector DB to look up the fixes
+        FunctionTool(search_fixes_for_error), 
         # FunctionTool(add_fix_to_knowledge_base),
     ]
     
     return ChatAgent(
         system_message=system_prompt,
         model=model,
-        # tools=tools, # FIXME: fix the tooling, now it goes and create an infinite loop
+        tools=tools,  # Tools enabled with safeguards in orchestrator
     )
 
