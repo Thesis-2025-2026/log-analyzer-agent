@@ -30,3 +30,4 @@ SIM_NAMESPACE=det:sim
 QDRANT_URL=xxxxxxxxxxxxxxxxxxxx
 QDRANT_API_KEY=xxxxxxxxxxxxxxxxx
 QDRANT_COLLECTION=log_fixes
+EMBEDDING_DIM=384

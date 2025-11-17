@@ -5,7 +5,6 @@ import os
 from typing import Any, Dict, List, Optional
 import psycopg2
 import psycopg2.extras
-import json
 
 
 def _get_db_params() -> Dict[str, Any]:

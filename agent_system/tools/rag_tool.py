@@ -4,26 +4,9 @@ Uses CAMEL-AI's retriever functionality for vector database integration.
 """
 from typing import List, Dict, Any, Optional
 import os
-
-# Try to import CAMEL-AI components, but handle gracefully if not available
-try:
-    from camel.retrievers import VectorRetriever
-    from camel.embeddings import OpenAIEmbedding
-    from camel.storages import QdrantStorage
-    CAMEL_RAG_AVAILABLE = True
-except ImportError:
-    CAMEL_RAG_AVAILABLE = False
-    VectorRetriever = None
-    OpenAIEmbedding = None
-    QdrantStorage = None
-
-# Also import qdrant_client for direct access if needed
-try:
-    from qdrant_client import QdrantClient
-    QDRANT_CLIENT_AVAILABLE = True
-except ImportError:
-    QDRANT_CLIENT_AVAILABLE = False
-    QdrantClient = None
+from camel.retrievers import VectorRetriever
+from camel.embeddings import OpenAIEmbedding
+from camel.storages import QdrantStorage
 
 
 # Initialize vector storage and retriever
@@ -33,15 +16,11 @@ def _get_vector_retriever() -> Optional[Any]:
     Initialize and return a vector retriever for RAG operations.
     Returns None if vector DB is not configured or CAMEL-AI RAG components are not available.
     """
-    if not CAMEL_RAG_AVAILABLE:
-        return None
-    
     try:
         # Get configuration from environment
         qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
         collection_name = os.getenv("QDRANT_COLLECTION", "log_fixes")
-        embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
         
         # Initialize embedding model
         # Note: OpenAIEmbedding uses 'url' not 'api_url', and 'model_type' not 'model'

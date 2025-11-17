@@ -5,7 +5,7 @@ from agent_system.config import settings as config_settings
 import os
 
 
-def create_model():
+def create_model(tool_choice="required"):
     platform = getattr(ModelPlatformType, config_settings.MODEL_PLATFORM)
     extra_kwargs = {}
     if platform == ModelPlatformType.OPENAI:
@@ -26,7 +26,7 @@ def create_model():
         model_config_dict=ChatGPTConfig(
             temperature=config_settings.TEMPERATURE,
             stream=True,
-            tool_choice="required",
+            tool_choice=tool_choice,
         ).as_dict(),
         **extra_kwargs,
     )

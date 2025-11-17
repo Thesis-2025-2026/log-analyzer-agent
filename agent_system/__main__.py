@@ -2,6 +2,9 @@
 Main entry point for the agent system.
 Supports both legacy single-agent mode and new Workforce-based orchestration.
 """
+# Import settings first to configure logging before other imports
+from agent_system.config import settings  # noqa: F401
+
 from agent_system.core.registry import get_agent
 from agent_system.core.storage import insert_report
 from agent_system.tools.log_parser import summarize_log
