@@ -18,12 +18,11 @@ def make_internal_knowledge_agent() -> ChatAgent:
         FunctionTool(query_logs),
         FunctionTool(get_logs_by_error_pattern),
         FunctionTool(search_fixes_for_error), 
-        # FunctionTool(add_fix_to_knowledge_base),
     ]
     
     return ChatAgent(
         system_message=system_prompt,
         model=model,
-        tools=tools,  # Tools enabled with safeguards in orchestrator
+        tools=tools
     )
 
