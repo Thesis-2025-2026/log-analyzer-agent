@@ -27,3 +27,5 @@ docker-data/
 
 .env
 node_modules/
+
+qdrant_data/
