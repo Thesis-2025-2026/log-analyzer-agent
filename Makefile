@@ -19,7 +19,7 @@ OLLAMA_HOST ?= $(if $(OLLAMA_HOST_FILE),$(subst /v1,,$(OLLAMA_HOST_FILE)),http:/
 PYMODULE ?= agent_system
 
 .PHONY: up _clean docker agent down clean _wait_ollama _pull_model _wait_model server start build-ui watch-ui api migrate \
-        detector all tail
+        detector all tail init-sample-data init-postgres-sample init-qdrant-sample fix-qdrant-collection
 
 up:
 	@echo "🔧 Using Docker API $(API)"
@@ -91,6 +91,28 @@ start:
 ## Apply DB migrations (re-run init SQL safely)
 migrate:
 	@$(DC) exec -T postgres sh -lc "psql -U $$POSTGRES_USER -d $$POSTGRES_DB -f /docker-entrypoint-initdb.d/init_db.sql"
+
+## Initialize PostgreSQL with sample data
+init-postgres-sample:
+	@echo "📊 Inserting sample data into PostgreSQL..."
+	@$(DC) cp infra/init_sample_data.sql postgres:/tmp/init_sample_data.sql
+	@$(DC) exec -T postgres sh -lc "psql -U $$POSTGRES_USER -d $$POSTGRES_DB -f /tmp/init_sample_data.sql"
+	@echo "✅ PostgreSQL sample data inserted"
+
+## Initialize Qdrant with sample data
+init-qdrant-sample:
+	@echo "📊 Inserting sample data into Qdrant..."
+	@$(PY) init_qdrant_sample_data.py
+	@echo "✅ Qdrant sample data inserted"
+
+## Initialize both databases with sample data
+init-sample-data: init-postgres-sample init-qdrant-sample
+	@echo "✅ All sample data initialized"
+
+## Fix Qdrant collection configuration (recreates with correct vector config)
+fix-qdrant-collection:
+	@echo "🔧 Fixing Qdrant collection configuration..."
+	@$(PY) fix_qdrant_collection.py
 
 build-ui:
 	@npx tailwindcss -i web/src/input.css -o web/assets/styles.css --minify

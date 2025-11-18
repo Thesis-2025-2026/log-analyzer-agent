@@ -23,18 +23,30 @@ def _get_vector_retriever() -> Optional[Any]:
         collection_name = os.getenv("QDRANT_COLLECTION", "log_fixes")
         
         # Initialize embedding model
+        # Use OpenAI's text-embedding-3-small model
         # Note: OpenAIEmbedding uses 'url' not 'api_url', and 'model_type' not 'model'
         from camel.types import EmbeddingModelType
+        
+        # Use OpenAI API endpoint (default) unless explicitly overridden
+        openai_base_url = os.getenv("OPENAI_EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+        openai_api_key = os.getenv("OPENAI_EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY"))
+        
+        if not openai_api_key:
+            raise ValueError(
+                "OPENAI_API_KEY or OPENAI_EMBEDDING_API_KEY environment variable must be set "
+                "to use OpenAI embeddings"
+            )
+        
         embedding = OpenAIEmbedding(
-            model_type=EmbeddingModelType.TEXT_EMBEDDING_3_SMALL,  # Default model type
-            url=os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
-            api_key=os.getenv("OPENAI_API_KEY", "ollama")
+            model_type=EmbeddingModelType.TEXT_EMBEDDING_3_SMALL,
+            url=openai_base_url,
+            api_key=openai_api_key
         )
         
         # Initialize Qdrant storage
         # QdrantStorage requires vector_dim and uses url_and_api_key as a tuple
-        # Match the collection vector size (384 from init.ipynb)
-        vector_dim = int(os.getenv("EMBEDDING_DIM", "384"))
+        # Match the collection vector size (1536 from init.ipynb)
+        vector_dim = int(os.getenv("EMBEDDING_DIM", "1536"))
         
         # QdrantStorage expects url_and_api_key as a tuple (url, api_key)
         url_and_api_key = None
@@ -48,9 +60,10 @@ def _get_vector_retriever() -> Optional[Any]:
         )
         
         # Create retriever
+        # Note: VectorRetriever expects 'embedding_model' not 'embedding'
         retriever = VectorRetriever(
-            storage=storage,
-            embedding=embedding
+            embedding_model=embedding,
+            storage=storage
         )
         
         return retriever
@@ -150,14 +163,38 @@ def add_fix_to_knowledge_base(error_log: str, fix_description: str, metadata: Op
         # Combine error and fix for embedding
         combined_text = f"Error: {error_log}\n\nFix: {fix_description}"
         
+        # Get embedding for the combined text
+        embedding_model = _retriever_cache.embedding_model
+        if embedding_model is None:
+            return {
+                "error": "Embedding model not available",
+                "success": False
+            }
+        
+        # Generate embedding vector
+        embedding_vector = embedding_model.embed(combined_text)
+        
+        # Create VectorRecord with the embedding and payload
+        from camel.storages.vectordb_storages.base import VectorRecord
+        import uuid
+        
+        # Combine metadata with the text content in payload
+        payload = {
+            "text": combined_text,
+            "error": error_log,
+            "fix": fix_description,
+            **(metadata or {})
+        }
+        
+        record = VectorRecord(
+            vector=embedding_vector,
+            id=str(uuid.uuid4()),
+            payload=payload
+        )
+        
         # Store in vector database
-        # Note: This depends on the specific storage implementation
-        # The retriever's storage should have an add method
         if hasattr(_retriever_cache.storage, 'add'):
-            _retriever_cache.storage.add(
-                texts=[combined_text],
-                metadata=[metadata or {}]
-            )
+            _retriever_cache.storage.add([record])
             return {
                 "success": True,
                 "message": "Fix added to knowledge base"
