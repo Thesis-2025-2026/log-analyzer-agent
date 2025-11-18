@@ -128,10 +128,36 @@ def search_fixes_for_error(error_log: str, top_k: int = 5) -> List[Dict[str, Any
         # Format results
         formatted_results = []
         for result in results:
+            # Extract content - prefer 'fix' field from payload, fallback to content/text
+            content = None
+            metadata = {}
+            
+            # Try to get payload/metadata from result
+            if hasattr(result, 'payload'):
+                payload = result.payload
+                # Prefer the 'fix' field if available (most relevant for error fixes)
+                content = payload.get('fix') or payload.get('text') or payload.get('content')
+                # Extract metadata (all payload fields except text/error/fix)
+                metadata = {k: v for k, v in payload.items() 
+                           if k not in ['text', 'error', 'fix', 'content']}
+            elif hasattr(result, 'content'):
+                content = result.content
+            elif hasattr(result, 'text'):
+                content = result.text
+            else:
+                content = str(result)
+            
+            # Get metadata from result.metadata if available
+            if hasattr(result, 'metadata') and result.metadata:
+                metadata.update(result.metadata)
+            
+            # Get score
+            score = result.score if hasattr(result, 'score') else 0.0
+            
             formatted_results.append({
-                "content": result.content if hasattr(result, 'content') else str(result),
-                "score": result.score if hasattr(result, 'score') else 0.0,
-                "metadata": result.metadata if hasattr(result, 'metadata') else {}
+                "content": content or "No content available",
+                "score": score,
+                "metadata": metadata
             })
         
         return formatted_results if formatted_results else [{
@@ -185,11 +211,16 @@ def add_fix_to_knowledge_base(error_log: str, fix_description: str, metadata: Op
         
         embedding_vector = embedding_model.embed(combined_text)
         
+        # Create payload with structured fields
+        # 'text' is used by CAMEL-AI for content extraction
+        # 'fix' is the primary field we want to retrieve
+        # 'error' is stored for reference
         payload = {
-            "text": combined_text,
-            "error": error_log,
-            "fix": fix_description,
-            **(metadata or {})
+            "text": combined_text,  # Full combined text for embedding context
+            "content": combined_text,  # Alternative field name some retrievers use
+            "error": error_log,  # Original error message
+            "fix": fix_description,  # The fix/solution (primary content to retrieve)
+            **(metadata or {})  # Additional metadata fields
         }
         
         record = VectorRecord(
