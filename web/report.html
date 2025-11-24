@@ -50,11 +50,8 @@
 
   <script>
     function getReportId() {
-      // Prefer /report/<id> path; fallback to ?id=<id>
       const m = window.location.pathname.match(/\/report\/(\d+)/);
-      if (m) return m[1];
-      const id = new URLSearchParams(window.location.search).get('id');
-      return id;
+      return m ? m[1] : null;
     }
 
     function levelBadge(level) {

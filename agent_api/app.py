@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import time
 
-from agent_system.core.registry import get_agent
-from agent_system.__main__ import analyze_log
+# from agent_system.core.registry import get_agent #FIXME: uncomment when connecting agents to fe
+# from agent_system.__main__ import analyze_log #FIXME: uncomment when connecting agents to fe
 from agent_system.core.storage import list_reports, get_report
 
 
@@ -40,19 +40,20 @@ def create_app() -> Flask:
             return jsonify({"error": "Missing 'query' in JSON body"}), 400
 
         if not isinstance(agent_name, str) or not agent_name.strip():
-            agent_name = "log_analysis" #FIXME: this agent does not exist anymore
+            agent_name = "log_analysis"  #FIXME: this agent does not exist anymore
 
         start = time.time()
-        try:
-            agent = get_agent(agent_name)
-        except Exception as e:
-            return jsonify({
-                "error": f"Unknown agent '{agent_name}'",
-                "details": str(e),
-            }), 400
+        # try:
+        #     # agent = get_agent(agent_name) #FIXME: uncomment when connecting agents to fe
+        # except Exception as e:
+        #     return jsonify({
+        #         "error": f"Unknown agent '{agent_name}'",
+        #         "details": str(e),
+        #     }), 400
 
         try:
-            reply = analyze_log(agent, query)
+            # reply = analyze_log(agent, query) #FIXME: uncomment when connecting agents to fe
+            reply = "mock reply"
             duration_ms = int((time.time() - start) * 1000)
             return jsonify({
                 "reply": reply,
@@ -68,7 +69,7 @@ def create_app() -> Flask:
     @app.get("/api/reports")
     def api_list_reports():
         try:
-            # Simple pagination params
+            # pagination params
             try:
                 limit = int(request.args.get("limit", "50"))
                 offset = int(request.args.get("offset", "0"))
