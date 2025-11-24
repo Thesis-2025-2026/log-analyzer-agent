@@ -19,7 +19,7 @@ OLLAMA_HOST ?= $(if $(OLLAMA_HOST_FILE),$(subst /v1,,$(OLLAMA_HOST_FILE)),http:/
 PYMODULE ?= agent_system
 
 .PHONY: up _clean docker agent down clean _wait_ollama _pull_model _wait_model server start build-ui watch-ui api migrate \
-        detector all tail
+        detector all tail test
 
 up:
 	@echo "🔧 Using Docker API $(API)"
@@ -104,13 +104,16 @@ down:
 clean:
 	@$(MAKE) _clean
 
+test:
+	@$(PY) -m pytest
+
 
 detector:
 	@echo "🚀 Starting detector + agent consumer (Ctrl-C to stop)…"
 	@set -e; \
 	  $(PY) -m detector.detector & D1=$$!; \
-	  $(PY) -m agent_system.connect_to_detector & D2=$$!; \
-	  wait $$D1 $$D2
+#	  $(PY) -m agent_system.connect_to_detector & D2=$$!; \
+	  wait $$D1
 
 all:
 	@echo "🚀 Starting detector + agent consumer + API (Ctrl-C to stop)…"
