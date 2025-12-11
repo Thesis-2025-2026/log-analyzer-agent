@@ -24,10 +24,11 @@ services:
     networks:
       - agent-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
   # ===========================================
@@ -59,11 +60,6 @@ services:
       - service-a-qdrant-data:/qdrant/storage
     networks:
       - agent-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
 
   service-a-api:
@@ -75,20 +71,23 @@ services:
       - "8001:8000"
     env_file:
       - ./config/service-a.env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       proxy:
         condition: service_healthy
       service-a-postgres:
         condition: service_healthy
       service-a-qdrant:
-        condition: service_healthy
+        condition: service_started
     networks:
       - agent-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
     restart: unless-stopped
 
   # ===========================================
@@ -120,11 +119,6 @@ services:
       - service-b-qdrant-data:/qdrant/storage
     networks:
       - agent-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
 
   service-b-api:
@@ -136,20 +130,23 @@ services:
       - "8002:8000"
     env_file:
       - ./config/service-b.env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       proxy:
         condition: service_healthy
       service-b-postgres:
         condition: service_healthy
       service-b-qdrant:
-        condition: service_healthy
+        condition: service_started
     networks:
       - agent-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
     restart: unless-stopped
 
 # ===========================================
