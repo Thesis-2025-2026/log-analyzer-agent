@@ -37,13 +37,16 @@ services:
   service-a-postgres:
     image: postgres:15
     container_name: service-a-postgres
+    ports:
+      - "5433:5432"
     environment:
       POSTGRES_USER: logs_user
       POSTGRES_PASSWORD: logs_pass
       POSTGRES_DB: service_a_logs
     volumes:
       - service-a-pg-data:/var/lib/postgresql/data
-      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/01_init_db.sql:ro
+      - ./infra/seed_service_a.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
     networks:
       - agent-network
     healthcheck:
@@ -56,6 +59,8 @@ services:
   service-a-qdrant:
     image: qdrant/qdrant:latest
     container_name: service-a-qdrant
+    ports:
+      - "6333:6333"
     volumes:
       - service-a-qdrant-data:/qdrant/storage
     networks:
@@ -96,13 +101,16 @@ services:
   service-b-postgres:
     image: postgres:15
     container_name: service-b-postgres
+    ports:
+      - "5434:5432"
     environment:
       POSTGRES_USER: logs_user
       POSTGRES_PASSWORD: logs_pass
       POSTGRES_DB: service_b_logs
     volumes:
       - service-b-pg-data:/var/lib/postgresql/data
-      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/01_init_db.sql:ro
+      - ./infra/seed_service_b.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
     networks:
       - agent-network
     healthcheck:
@@ -115,6 +123,8 @@ services:
   service-b-qdrant:
     image: qdrant/qdrant:latest
     container_name: service-b-qdrant
+    ports:
+      - "6334:6333"
     volumes:
       - service-b-qdrant-data:/qdrant/storage
     networks:
