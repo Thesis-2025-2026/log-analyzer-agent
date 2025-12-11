@@ -2,8 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import time
 
-# from agent_system.core.registry import get_agent #FIXME: uncomment when connecting agents to fe
-# from agent_system.__main__ import analyze_log #FIXME: uncomment when connecting agents to fe
+from agent_system.agents.main_agent import analyze_log_with_main_agent
 from agent_system.core.storage import list_reports, get_report
 
 
@@ -34,30 +33,19 @@ def create_app() -> Flask:
     def api_query():
         data = request.get_json(silent=True) or {}
         query = data.get("query") or data.get("text") or data.get("log")
-        agent_name = data.get("agent") or "workforce"
 
         if not isinstance(query, str) or not query.strip():
             return jsonify({"error": "Missing 'query' in JSON body"}), 400
 
-        if not isinstance(agent_name, str) or not agent_name.strip():
-            agent_name = "log_analysis"  #FIXME: this agent does not exist anymore
-
         start = time.time()
-        # try:
-        #     # agent = get_agent(agent_name) #FIXME: uncomment when connecting agents to fe
-        # except Exception as e:
-        #     return jsonify({
-        #         "error": f"Unknown agent '{agent_name}'",
-        #         "details": str(e),
-        #     }), 400
 
         try:
-            # reply = analyze_log(agent, query) #FIXME: uncomment when connecting agents to fe
-            reply = "mock reply"
+            # Use the new Main Agent for log analysis
+            reply = analyze_log_with_main_agent(query)
             duration_ms = int((time.time() - start) * 1000)
             return jsonify({
                 "reply": reply,
-                "agent": agent_name,
+                "agent": "main_agent",
                 "duration_ms": duration_ms,
             }), 200
         except Exception as e:
