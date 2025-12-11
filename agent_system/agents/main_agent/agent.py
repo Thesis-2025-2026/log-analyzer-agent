@@ -7,6 +7,11 @@ from agent_system.core.model_factory import create_model
 from agent_system.prompts.main_agent import get_main_agent_prompt
 from agent_system.tools.health_check_tool import check_service_health
 from agent_system.tools.internal_knowledge_tool import query_internal_knowledge
+from agent_system.tools.cross_service_tool import (
+    discover_services,
+    get_service_report,
+    gather_cross_service_reports,
+)
 
 
 def make_main_agent() -> ChatAgent:
@@ -19,6 +24,8 @@ def make_main_agent() -> ChatAgent:
     - Analyzing error severity and impact
     - Checking service health
     - Querying internal knowledge when needed
+    - Discovering other services via the proxy
+    - Gathering reports from other services for cross-service context
     - Synthesizing information from multiple sources
     - Generating final analysis reports with recommendations
     
@@ -29,8 +36,13 @@ def make_main_agent() -> ChatAgent:
     system_prompt = get_main_agent_prompt()
     
     tools = [
+        # Local analysis tools
         FunctionTool(check_service_health),
         FunctionTool(query_internal_knowledge),
+        # Cross-service tools for distributed analysis
+        FunctionTool(discover_services),
+        FunctionTool(get_service_report),
+        FunctionTool(gather_cross_service_reports),
     ]
     
     return ChatAgent(
