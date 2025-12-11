@@ -256,5 +256,6 @@ Wait for containers to be healthy: `docker-compose -f docker-compose.distributed
 
 ## Documentation
 
-- [Distributed Deployment Guide](docs/DISTRIBUTED_DEPLOYMENT.md) - Detailed architecture and configuration
+- [Agent System Overview](docs/AGENT_SYSTEM_OVERVIEW.md) - Architecture, agents, tools, and workflows
+- [Distributed Deployment Guide](docs/DISTRIBUTED_DEPLOYMENT.md) - Multi-service deployment and configuration
 - [Test Notebook](test_distributed_system.ipynb) - Interactive testing scenarios
