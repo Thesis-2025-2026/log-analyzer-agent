@@ -35,10 +35,11 @@ def main() -> None:
             pass
 
         # if DETECTOR_DEBUG:
-        #     print(f"[detector] received log: {data_str}")
+        # print(f"[detector] received log: {data_str}")
 
         if run_filters(log):
             try:
+                print(f"Publishing: ", log)
                 r.publish(ANOM_CHANNEL, json.dumps(log))
             except Exception:
                 pass

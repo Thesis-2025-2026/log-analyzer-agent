@@ -7,3 +7,4 @@ Flask
 flask-cors
 requests
 qdrant-client
+pytest
