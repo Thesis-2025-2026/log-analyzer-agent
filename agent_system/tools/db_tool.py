@@ -59,8 +59,10 @@ def query_logs(
         values.extend([service, service])
     
     if hours_back:
-        conditions.append("timestamp >= NOW() - INTERVAL '%s hours'")
-        values.append(str(hours_back))
+        # Use make_interval() function for proper parameterization
+        # This avoids SQL injection and handles the interval correctly
+        conditions.append("timestamp >= NOW() - make_interval(hours => %s)")
+        values.append(hours_back)
     
     where_clause = " AND ".join(conditions) if conditions else "1=1"
     

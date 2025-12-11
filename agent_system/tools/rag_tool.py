@@ -1,12 +1,17 @@
 """
 RAG Tool for communicating with vector database to search for fixes based on error logs.
 Uses CAMEL-AI's retriever functionality for vector database integration.
+
+Uses OpenAI's text-embedding-3-small model (1536 dimensions) for generating embeddings.
 """
 from typing import List, Dict, Any, Optional
 import os
 from camel.retrievers import VectorRetriever
 from camel.embeddings import OpenAIEmbedding
 from camel.storages import QdrantStorage
+from camel.types import EmbeddingModelType, VectorDistance
+from camel.storages.vectordb_storages.base import VectorRecord
+import uuid
 
 
 # Initialize vector storage and retriever
@@ -17,45 +22,65 @@ def _get_vector_retriever() -> Optional[Any]:
     Returns None if vector DB is not configured or CAMEL-AI RAG components are not available.
     """
     try:
-        # Get configuration from environment
         qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
         collection_name = os.getenv("QDRANT_COLLECTION", "log_fixes")
+        qdrant_timeout = float(os.getenv("QDRANT_TIMEOUT", "30.0"))
         
-        # Initialize embedding model
-        # Note: OpenAIEmbedding uses 'url' not 'api_url', and 'model_type' not 'model'
-        from camel.types import EmbeddingModelType
+        openai_base_url = os.getenv("OPENAI_EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+        openai_api_key = os.getenv("OPENAI_EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY"))
+        
+        if not openai_api_key:
+            raise ValueError(
+                "OPENAI_API_KEY or OPENAI_EMBEDDING_API_KEY environment variable must be set "
+                "to use OpenAI embeddings"
+            )
+        
+        # Initialize OpenAI embedding model: text-embedding-3-small
+        # This model produces 1536-dimensional vectors optimized for semantic search
         embedding = OpenAIEmbedding(
-            model_type=EmbeddingModelType.TEXT_EMBEDDING_3_SMALL,  # Default model type
-            url=os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
-            api_key=os.getenv("OPENAI_API_KEY", "ollama")
+            model_type=EmbeddingModelType.TEXT_EMBEDDING_3_SMALL,
+            url=openai_base_url,
+            api_key=openai_api_key
         )
         
-        # Initialize Qdrant storage
-        # QdrantStorage requires vector_dim and uses url_and_api_key as a tuple
-        # Match the collection vector size (384 from init.ipynb)
-        vector_dim = int(os.getenv("EMBEDDING_DIM", "384"))
+        vector_dim = int(os.getenv("EMBEDDING_DIM", "1536"))
         
-        # QdrantStorage expects url_and_api_key as a tuple (url, api_key)
-        url_and_api_key = None
-        if qdrant_url and qdrant_api_key:
-            url_and_api_key = (qdrant_url, qdrant_api_key)
+        url_and_api_key = (qdrant_url, qdrant_api_key)
+        
+        qdrant_kwargs = {
+            "distance": VectorDistance.COSINE
+        }
+        
+        # Add timeout if specified (helps prevent hanging connections)
+        if qdrant_timeout:
+            qdrant_kwargs["timeout"] = qdrant_timeout
+        
+        # Enable cloud_inference for Qdrant Cloud instances
+        if qdrant_url and "cloud.qdrant.io" in qdrant_url:
+            qdrant_kwargs["cloud_inference"] = True
         
         storage = QdrantStorage(
             vector_dim=vector_dim,
             collection_name=collection_name,
-            url_and_api_key=url_and_api_key
+            url_and_api_key=url_and_api_key,
+            **qdrant_kwargs
         )
         
-        # Create retriever
         retriever = VectorRetriever(
-            storage=storage,
-            embedding=embedding
+            embedding_model=embedding,
+            storage=storage
         )
         
         return retriever
     except Exception as e:
-        print(f"Warning: Vector DB not available: {e}")
+        error_msg = str(e)
+        # Provide more helpful error messages for timeout issues
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            print(f"Warning: Vector DB connection timed out: {error_msg}")
+            print("Hint: Check QDRANT_URL and network connectivity. You can increase timeout with QDRANT_TIMEOUT env var.")
+        else:
+            print(f"Warning: Vector DB not available: {error_msg}")
         return None
 
 
@@ -84,7 +109,7 @@ def search_fixes_for_error(error_log: str, top_k: int = 5) -> List[Dict[str, Any
     
     if _retriever_cache is None:
         _retriever_cache = _get_vector_retriever()
-    
+
     if _retriever_cache is None:
         return [{
             "error": "Vector database not configured or unavailable",
@@ -94,8 +119,8 @@ def search_fixes_for_error(error_log: str, top_k: int = 5) -> List[Dict[str, Any
     try:
         top_k = min(max(1, top_k), 20)
         
-        # Perform similarity search
-        results = _retriever_cache.retrieve(
+
+        results = _retriever_cache.query(
             query=error_log,
             top_k=top_k
         )
@@ -103,10 +128,36 @@ def search_fixes_for_error(error_log: str, top_k: int = 5) -> List[Dict[str, Any
         # Format results
         formatted_results = []
         for result in results:
+            # Extract content - prefer 'fix' field from payload, fallback to content/text
+            content = None
+            metadata = {}
+            
+            # Try to get payload/metadata from result
+            if hasattr(result, 'payload'):
+                payload = result.payload
+                # Prefer the 'fix' field if available (most relevant for error fixes)
+                content = payload.get('fix') or payload.get('text') or payload.get('content')
+                # Extract metadata (all payload fields except text/error/fix)
+                metadata = {k: v for k, v in payload.items() 
+                           if k not in ['text', 'error', 'fix', 'content']}
+            elif hasattr(result, 'content'):
+                content = result.content
+            elif hasattr(result, 'text'):
+                content = result.text
+            else:
+                content = str(result)
+            
+            # Get metadata from result.metadata if available
+            if hasattr(result, 'metadata') and result.metadata:
+                metadata.update(result.metadata)
+            
+            # Get score
+            score = result.score if hasattr(result, 'score') else 0.0
+            
             formatted_results.append({
-                "content": result.content if hasattr(result, 'content') else str(result),
-                "score": result.score if hasattr(result, 'score') else 0.0,
-                "metadata": result.metadata if hasattr(result, 'metadata') else {}
+                "content": content or "No content available",
+                "score": score,
+                "metadata": metadata
             })
         
         return formatted_results if formatted_results else [{
@@ -150,14 +201,36 @@ def add_fix_to_knowledge_base(error_log: str, fix_description: str, metadata: Op
         # Combine error and fix for embedding
         combined_text = f"Error: {error_log}\n\nFix: {fix_description}"
         
-        # Store in vector database
-        # Note: This depends on the specific storage implementation
-        # The retriever's storage should have an add method
+        # Get embedding for the combined text
+        embedding_model = _retriever_cache.embedding_model
+        if embedding_model is None:
+            return {
+                "error": "Embedding model not available",
+                "success": False
+            }
+        
+        embedding_vector = embedding_model.embed(combined_text)
+        
+        # Create payload with structured fields
+        # 'text' is used by CAMEL-AI for content extraction
+        # 'fix' is the primary field we want to retrieve
+        # 'error' is stored for reference
+        payload = {
+            "text": combined_text,  # Full combined text for embedding context
+            "content": combined_text,  # Alternative field name some retrievers use
+            "error": error_log,  # Original error message
+            "fix": fix_description,  # The fix/solution (primary content to retrieve)
+            **(metadata or {})  # Additional metadata fields
+        }
+        
+        record = VectorRecord(
+            vector=embedding_vector,
+            id=str(uuid.uuid4()),
+            payload=payload
+        )
+        
         if hasattr(_retriever_cache.storage, 'add'):
-            _retriever_cache.storage.add(
-                texts=[combined_text],
-                metadata=[metadata or {}]
-            )
+            _retriever_cache.storage.add([record])
             return {
                 "success": True,
                 "message": "Fix added to knowledge base"
@@ -172,4 +245,3 @@ def add_fix_to_knowledge_base(error_log: str, fix_description: str, metadata: Op
             "error": f"Failed to add fix to knowledge base: {str(e)}",
             "success": False
         }
-

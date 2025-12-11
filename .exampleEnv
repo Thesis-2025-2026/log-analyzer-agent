@@ -5,6 +5,12 @@ OPENAI_BASE_URL=http://localhost:11434/v1
 OPENAI_API_KEY=ollama
 MODEL_NAME=phi3:mini
 
+# OpenAI Embeddings (for vector database)
+# Set these to use OpenAI's text-embedding-3-small model
+# If not set, will fall back to OPENAI_BASE_URL and OPENAI_API_KEY
+# OPENAI_EMBEDDING_BASE_URL=https://api.openai.com/v1
+# OPENAI_EMBEDDING_API_KEY=sk-your-openai-api-key-here
+
 # Postgres
 POSTGRES_USER=logs_user
 POSTGRES_PASSWORD=logs_pass
@@ -30,4 +36,4 @@ SIM_NAMESPACE=det:sim
 QDRANT_URL=xxxxxxxxxxxxxxxxxxxx
 QDRANT_API_KEY=xxxxxxxxxxxxxxxxx
 QDRANT_COLLECTION=log_fixes
-EMBEDDING_DIM=384
+EMBEDDING_DIM=1536
