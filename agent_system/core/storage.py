@@ -1,10 +1,11 @@
 import os
+import logging
 from typing import Any, Dict, List, Optional
 import psycopg2
 import psycopg2.extras
 from psycopg2.extras import Json as PgJson
 
-
+logger = logging.getLogger(__name__)
 def _db_params() -> Dict[str, Any]:
     return {
         "host": os.getenv("POSTGRES_HOST", "localhost"),

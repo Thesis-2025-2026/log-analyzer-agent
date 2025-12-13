@@ -5,7 +5,8 @@ import logging
 import atexit
 
 from agent_system.agents.main_agent import analyze_log_with_main_agent
-from agent_system.core.storage import list_reports, get_report
+from agent_system.core.storage import list_reports, get_report, insert_report
+from agent_system.tools.log_parser import summarize_log
 from agent_api.config import service_config
 from agent_api.service_client import proxy_client
 from agent_api.health_monitor import (
@@ -136,6 +137,17 @@ def create_app() -> Flask:
             # Use the new Main Agent for log analysis
             reply = analyze_log_with_main_agent(query)
             duration_ms = int((time.time() - start) * 1000)
+            logger.info(f"we got reply {reply}")
+            # Persist report to the service-specific database
+            try:
+                meta = summarize_log(query)
+                level = str(meta.get("level", "unknown"))
+                service = str(meta.get("service", "unknown"))
+                insert_report(level=level, service=service, content=reply, raw_log=query)
+            except Exception as db_err:
+                print("error", db_err)
+                logger.warning("Failed to store report: %s", db_err)
+
             return jsonify({
                 "reply": reply,
                 "agent": "main_agent",
