@@ -20,15 +20,15 @@ def summarize_log(log_text: str) -> Dict[str, Any]:
             raw: original log text (truncated if needed)
     """
     try:
-        print("\n\n_____________________________________WE ARE IN PARSER_____________________________________\n\n", log_text)
         payload: Dict[str, Any] = json.loads(log_text)
-        level = payload.get("level", "unknown")
-        message = payload.get("message", "")
-        service = payload.get("service", "unknown")
+        level = str(payload.get("level", "unknown"))
+        message = str(payload.get("message", payload.get("msg", "")))
+        service = str(payload.get("service", payload.get("service_name", "unknown")))
         return {
-            "level": "super serious",
+            "level": level,
             "service": service,
-            "message": "This is a parsed json",
+            "message": message or "",
+            "raw": payload,
         }
 
     except json.JSONDecodeError:

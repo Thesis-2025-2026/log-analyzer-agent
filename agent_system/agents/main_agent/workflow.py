@@ -2,12 +2,20 @@
 Main Agent workflow for log analysis.
 """
 import logging
-from typing import Optional
+from typing import Optional, List
 
+from agent_system.tools.cross_service_tool import (
+    set_visited_services,
+    CURRENT_SERVICE_NAME,
+)
 logger = logging.getLogger(__name__)
 
 
-def analyze_log_with_main_agent(log_data: str, max_retries: int = 3) -> str:
+def analyze_log_with_main_agent(
+    log_data: str,
+    max_retries: int = 3,
+    visited_services: Optional[List[str]] = None,
+) -> str:
     """
     Analyze a log using the Main Agent.
     
@@ -27,6 +35,12 @@ def analyze_log_with_main_agent(log_data: str, max_retries: int = 3) -> str:
     """
     logger.info("Starting log analysis with Main Agent")
     logger.debug(f"Log data: {log_data[:200]}...")
+
+    # Seed visited-services context to prevent cycles
+    visited = list(visited_services or [])
+    if CURRENT_SERVICE_NAME and CURRENT_SERVICE_NAME not in visited:
+        visited.append(CURRENT_SERVICE_NAME)
+    set_visited_services(visited)
     
     # Import here to avoid circular dependencies
     from agent_system.agents.main_agent import make_main_agent
@@ -111,4 +125,3 @@ def _format_error_result(log_data: str, error: Optional[str], max_retries: int) 
     result_parts.append("\n" + "=" * 80)
     
     return "\n".join(result_parts)
-

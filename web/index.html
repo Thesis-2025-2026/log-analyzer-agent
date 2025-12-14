@@ -7,88 +7,75 @@
   <link href="/assets/styles.css" rel="stylesheet">
 </head>
 <body class="min-h-screen bg-gray-100 text-gray-900">
-  <div class="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-6 md:grid-cols-[220px_1fr]">
+  <div class="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 p-6 md:grid-cols-[240px_1fr]">
 
     <!-- Sidebar navigation -->
-    <aside class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
+    <aside class="sticky top-6 h-fit rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
       <div class="border-b px-4 py-3">
         <h2 class="text-sm font-semibold text-gray-700">Navigation</h2>
       </div>
       <nav class="p-2 text-sm">
-        <a href="/" class="block rounded-lg bg-gray-900 px-3 py-2 font-medium text-white">Chat</a>
+        <a href="/" class="block rounded-lg bg-gray-900 px-3 py-2 font-medium text-white">Analyze</a>
         <a href="/reports" class="mt-1 block rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-50">Reports</a>
       </nav>
     </aside>
 
-    <!-- Main chat panel -->
-    <main class="flex h-[85vh] flex-col rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
-      <!-- Header -->
-      <div class="flex items-center justify-between border-b px-4 py-3">
-        <h1 class="text-sm font-semibold text-gray-800">Chat with Agent</h1>
-        <button id="newBtn" class="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">New chat</button>
+    <!-- Main panel -->
+    <main class="flex min-h-[calc(100vh-72px)] flex-col rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
+      <div class="border-b px-5 py-4">
+        <h1 class="text-base font-semibold text-gray-900">Log Analysis</h1>
+        <p class="mt-1 text-sm text-gray-600">Paste a log or JSON payload and generate a full analysis report.</p>
       </div>
 
-      <ul id="messages" class="flex-1 space-y-4 overflow-y-auto p-4 bg-gradient-to-b from-white to-gray-50"></ul>
+      <div class="grid flex-1 grid-rows-[auto_1fr] gap-4 p-5">
+        <section class="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+          <div class="flex items-start gap-3">
+            <textarea
+              id="input"
+              rows="6"
+              placeholder="Paste log or JSON… (Shift+Enter = newline)"
+              class="h-32 w-full resize-vertical rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-inner focus:border-gray-400 focus:outline-none"></textarea>
+            <button
+              id="sendBtn"
+              class="h-11 shrink-0 rounded-xl bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              Generate
+            </button>
+          </div>
+          <p class="mt-2 text-xs text-gray-500">Enter to submit · Shift+Enter for newline</p>
+        </section>
 
-      <div class="border-t p-3">
-        <div class="flex items-start gap-2">
-          <textarea id="input" rows="3" placeholder="Paste log or JSON… (Shift+Enter = newline)" class="h-24 w-full resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-inner focus:border-gray-400 focus:outline-none"></textarea>
-          <button id="sendBtn" class="h-10 shrink-0 rounded-xl bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Generate</button>
-        </div>
-        <p class="mt-2 text-xs text-gray-500">Enter to submit · Shift+Enter for newline</p>
+        <section class="flex min-h-[320px] flex-col rounded-xl border border-gray-200 bg-white shadow-inner">
+          <header class="flex items-center justify-between border-b px-4 py-3">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-gray-500">Latest Analysis</p>
+              <h2 class="text-sm font-semibold text-gray-800" id="resultTitle">No report yet</h2>
+            </div>
+            <span id="status" class="text-xs text-gray-500"></span>
+          </header>
+          <article id="resultBody" class="flex-1 space-y-3 overflow-auto px-4 py-4 text-sm leading-6 text-gray-800 whitespace-pre-wrap break-words">
+            Paste a log and hit Generate to see the analysis here.
+          </article>
+        </section>
       </div>
     </main>
   </div>
 
   <script>
-    const messagesEl = document.getElementById('messages');
     const inputEl = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
-    const newBtn = document.getElementById('newBtn');
-
-    function addBlock(roleLabel, color, text) {
-      const li = document.createElement('li');
-      li.className = 'rounded-xl border p-4 shadow-sm bg-white';
-      li.style.borderLeftWidth = '4px';
-      li.style.borderLeftColor = color;
-
-      const label = document.createElement('div');
-      label.className = 'mb-1 text-[11px] font-semibold uppercase tracking-wider';
-      label.style.color = color;
-      label.textContent = roleLabel;
-
-      const body = document.createElement('div');
-      body.className = 'whitespace-pre-wrap leading-6';
-      body.textContent = text;
-
-      li.appendChild(label);
-      li.appendChild(body);
-      messagesEl.appendChild(li);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
-
-    function addUser(text) { addBlock('User', '#2563eb', text); }
-    function addReport(text) { addBlock('Report', '#059669', text); }
+    const resultTitle = document.getElementById('resultTitle');
+    const resultBody = document.getElementById('resultBody');
+    const statusEl = document.getElementById('status');
 
     async function send() {
       const text = inputEl.value.trim();
       if (!text) return;
 
-      addUser(text);
-      // placeholder report while waiting
-      const placeholder = document.createElement('li');
-      placeholder.className = 'rounded-xl border p-4 shadow-sm bg-white';
-      placeholder.style.borderLeftWidth = '4px';
-      placeholder.style.borderLeftColor = '#a7f3d0';
-      placeholder.innerHTML = `
-        <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">Report</div>
-        <div class="whitespace-pre-wrap leading-6 text-gray-500">Generating report…</div>`;
-      messagesEl.appendChild(placeholder);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-
-      inputEl.value = '';
       inputEl.disabled = true;
       sendBtn.disabled = true;
+      statusEl.textContent = 'Generating…';
+      resultTitle.textContent = 'Generating report…';
+      resultBody.textContent = 'Please wait while the agent analyzes your log.';
 
       try {
         const res = await fetch('/api/query', {
@@ -97,16 +84,19 @@
           body: JSON.stringify({ query: text, agent: 'log_analysis' })
         });
         const data = await res.json();
-        messagesEl.removeChild(placeholder);
         if (res.ok) {
-          const reportText = data.reply || 'Report generated.';
-          addReport(reportText);
+          resultTitle.textContent = 'Report ready';
+          resultBody.textContent = data.reply || 'Report generated.';
+          statusEl.textContent = '';
         } else {
-          addReport(`[error] ${data.error || res.status}`);
+          resultTitle.textContent = 'Error';
+          resultBody.textContent = data.error || res.statusText || 'Failed to generate report.';
+          statusEl.textContent = '';
         }
       } catch (e) {
-        messagesEl.removeChild(placeholder);
-        addReport('[network error]');
+        resultTitle.textContent = 'Network error';
+        resultBody.textContent = 'Could not reach the service. Please try again.';
+        statusEl.textContent = '';
       } finally {
         inputEl.disabled = false;
         sendBtn.disabled = false;
@@ -114,12 +104,10 @@
       }
     }
 
-    // Keyboard UX
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
     sendBtn.addEventListener('click', send);
-    newBtn.addEventListener('click', () => { messagesEl.innerHTML = ''; inputEl.focus(); });
   </script>
 </body>
 </html>

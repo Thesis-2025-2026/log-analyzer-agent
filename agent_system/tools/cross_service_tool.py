@@ -15,12 +15,38 @@ import requests
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
+from contextvars import ContextVar
 
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
 PROXY_URL = os.getenv("PROXY_URL", "http://localhost:8000")
 REQUEST_TIMEOUT = int(os.getenv("CROSS_SERVICE_TIMEOUT", "60"))
+CURRENT_SERVICE_NAME = os.getenv("SERVICE_NAME", "").strip()
+
+# Track visited services per request to avoid cycles/self-calls
+_visited_services_ctx: ContextVar[List[str]] = ContextVar(
+    "_visited_services_ctx", default=[]
+)
+
+
+def set_visited_services(visited: Optional[List[str]] = None) -> None:
+    """Set the current visited-services list for this request context."""
+    safe_list = list(visited or [])
+    _visited_services_ctx.set(safe_list)
+
+
+def _get_visited_services() -> List[str]:
+    try:
+        return list(_visited_services_ctx.get())
+    except Exception:
+        return []
+
+
+def _with_current_service(visited: List[str]) -> List[str]:
+    if CURRENT_SERVICE_NAME and CURRENT_SERVICE_NAME not in visited:
+        return visited + [CURRENT_SERVICE_NAME]
+    return visited
 
 
 def discover_services(capability: Optional[str] = None) -> str:
@@ -137,6 +163,14 @@ def get_service_report(service_name: str, error_context: str) -> str:
          Recommendation: Check payment gateway connectivity."
     """
     try:
+        visited = _get_visited_services()
+
+        # Prevent self-calls and cycles
+        if CURRENT_SERVICE_NAME and service_name == CURRENT_SERVICE_NAME:
+            return f"Skipping '{service_name}' to avoid self-call recursion."
+        if service_name in visited:
+            return f"Skipping '{service_name}' because it was already visited in this request."
+
         # First, get service info from proxy
         svc_response = requests.get(
             f"{PROXY_URL}/services/{service_name}",
@@ -161,13 +195,17 @@ def get_service_report(service_name: str, error_context: str) -> str:
         
         # Query the service's agent
         logger.info(f"Querying service {service_name} at {service_url}")
+
+        outgoing_visited = _with_current_service(visited)
+        set_visited_services(outgoing_visited)
         
         query_response = requests.post(
             f"{service_url}/api/query",
             json={
                 "query": f"Analyze this error from the perspective of {service_name}. "
                         f"Provide relevant context from your service's logs and knowledge base.\n\n"
-                        f"Error context:\n{error_context}"
+                        f"Error context:\n{error_context}",
+                "visited_services": outgoing_visited,
             },
             timeout=REQUEST_TIMEOUT
         )
@@ -238,6 +276,8 @@ def gather_cross_service_reports(
          Summary: Error may be affecting payment and inventory services."
     """
     try:
+        visited = _get_visited_services()
+
         # Determine which services to query
         if service_names:
             target_services = [s.strip() for s in service_names.split(",") if s.strip()]
@@ -258,14 +298,27 @@ def gather_cross_service_reports(
         
         if not target_services:
             return "No services available to query"
+
+        # Remove already-visited services to avoid ping-pong cycles
+        if visited:
+            target_services = [svc for svc in target_services if svc not in visited]
+        if not target_services:
+            return "All candidate services were already visited; skipping cross-service queries."
         
         # Query services in parallel
         reports = {}
         errors = {}
-        
+
+        visited_snapshot = _with_current_service(visited)
+
         with ThreadPoolExecutor(max_workers=min(5, len(target_services))) as executor:
+            def _call_service(service: str) -> str:
+                # Ensure visited context is available in worker threads
+                set_visited_services(visited_snapshot)
+                return get_service_report(service, error_context)
+
             future_to_service = {
-                executor.submit(get_service_report, svc, error_context): svc
+                executor.submit(_call_service, svc): svc
                 for svc in target_services
             }
             
@@ -310,4 +363,3 @@ def gather_cross_service_reports(
     except Exception as e:
         logger.error(f"Error gathering cross-service reports: {e}")
         return f"Error gathering cross-service reports: {str(e)}"
-

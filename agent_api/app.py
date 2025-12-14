@@ -127,6 +127,9 @@ def create_app() -> Flask:
     def api_query():
         data = request.get_json(silent=True) or {}
         query = data.get("query") or data.get("text") or data.get("log")
+        visited_services = data.get("visited_services")
+        if not isinstance(visited_services, list):
+            visited_services = []
 
         if not isinstance(query, str) or not query.strip():
             return jsonify({"error": "Missing 'query' in JSON body"}), 400
@@ -135,7 +138,10 @@ def create_app() -> Flask:
 
         try:
             # Use the new Main Agent for log analysis
-            reply = analyze_log_with_main_agent(query)
+            reply = analyze_log_with_main_agent(
+                query,
+                visited_services=visited_services,
+            )
             duration_ms = int((time.time() - start) * 1000)
             logger.info(f"we got reply {reply}")
             # Persist report to the service-specific database

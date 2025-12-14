@@ -4,24 +4,31 @@ Connect to the detector module and process flagged logs using the Workforce orch
 # Import settings first to configure logging before other imports
 from agent_system.config import settings  # noqa: F401
 
+import logging
+import os
 import redis
 import json
-from agent_system.agents.orchestrator import create_log_analysis_workforce, analyze_log_with_workforce
+from agent_system.agents.main_agent.workflow import analyze_log_with_main_agent
 from agent_system.core.storage import insert_report
 from agent_system.tools.log_parser import summarize_log
+
+logger = logging.getLogger(__name__)
+
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+ANOM_CHANNEL = os.getenv("ANOM_CHANNEL", "anomalies")
 
 
 def main():
     """Main entry point for the agent system that listens for anomalies from the detector."""
     # Connect to Redis
-    r = redis.Redis(host="localhost", port=6379, db=0)
+    r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
     pubsub = r.pubsub()
-    pubsub.subscribe("anomalies")
+    pubsub.subscribe(ANOM_CHANNEL)
     
-    # Create the workforce for log analysis
-    print("Initializing Workforce for log analysis...")
-    workforce = create_log_analysis_workforce()
-    print("Workforce initialized and ready.")
+    print("Initializing Main Agent for log analysis...")
+    print("Main Agent initialized and ready.")
     
     print("AI Agent listening for anomalies...")
     
@@ -30,13 +37,22 @@ def main():
             try:
                 anomaly = json.loads(message["data"])
                 print("\n🚨 AI Agent received anomaly:", anomaly)
+                logger.info(
+                    "Investigating anomaly from detector",
+                    extra={
+                        "service": anomaly.get("service", "unknown"),
+                        "level": anomaly.get("level", "unknown"),
+                        "trace_id": anomaly.get("trace_id"),
+                        "flow": anomaly.get("flow"),
+                    },
+                )
                 
                 # Convert anomaly to log data string for analysis
                 log_data = json.dumps(anomaly) if isinstance(anomaly, dict) else str(anomaly)
                 
                 # Analyze the log using the workforce
-                print("📊 Analyzing log with Workforce...")
-                analysis_result = analyze_log_with_workforce(workforce, log_data)
+                print("📊 Analyzing log with Main Agent...")
+                analysis_result = analyze_log_with_main_agent(log_data)
                 print("✅ Analysis complete.")
                 print(f"\n📋 Analysis Result:\n{analysis_result}\n")
                 
