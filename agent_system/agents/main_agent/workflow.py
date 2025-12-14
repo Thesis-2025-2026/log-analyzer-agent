@@ -10,6 +10,11 @@ from agent_system.tools.cross_service_tool import (
 )
 logger = logging.getLogger(__name__)
 
+def make_main_agent():
+    """Factory wrapper to allow monkeypatching in tests."""
+    from agent_system.agents.main_agent import make_main_agent as factory
+    return factory()
+
 
 def analyze_log_with_main_agent(
     log_data: str,
@@ -41,9 +46,6 @@ def analyze_log_with_main_agent(
     if CURRENT_SERVICE_NAME and CURRENT_SERVICE_NAME not in visited:
         visited.append(CURRENT_SERVICE_NAME)
     set_visited_services(visited)
-    
-    # Import here to avoid circular dependencies
-    from agent_system.agents.main_agent import make_main_agent
     
     # Construct the analysis prompt
     prompt = (
