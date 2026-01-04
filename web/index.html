@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Log Analyzer</title>
   <link href="/assets/styles.css" rel="stylesheet">
+  <style>
+    summary::-webkit-details-marker { display: none; }
+  </style>
 </head>
 <body class="h-screen overflow-hidden bg-gray-100 text-gray-900">
   <div class="flex h-screen w-full">
@@ -192,14 +195,14 @@
     const detailsStatus = document.getElementById('detailsStatus');
     const detailsSubtitle = document.getElementById('detailsSubtitle');
 
-    const state = {
-      reports: [],
-      selectedReportId: null,
-      report: null,
-      events: null,
-      selection: { service: null, agentEntryId: null },
-      latestReportId: null,
-    };
+	    const state = {
+	      reports: [],
+	      selectedReportId: null,
+	      report: null,
+	      events: null,
+	      selection: { service: null, agentEntryId: null, callEntryId: null },
+	      latestReportId: null,
+	    };
 
     function canonicalLevel(level) {
       const l = (level || '').toString().trim().toLowerCase();
@@ -630,11 +633,12 @@
           return;
         }
 
-        const services = Array.from(new Set(entries.map(e => e.service_name || 'unknown')));
-        if (!state.selection.service || !services.includes(state.selection.service)) {
-          state.selection.service = services[0];
-          state.selection.agentEntryId = null;
-        }
+	        const services = Array.from(new Set(entries.map(e => e.service_name || 'unknown')));
+	        if (!state.selection.service || !services.includes(state.selection.service)) {
+	          state.selection.service = services[0];
+	          state.selection.agentEntryId = null;
+	          state.selection.callEntryId = null;
+	        }
 
         function agentEntriesFor(serviceName) {
           return entries
@@ -664,12 +668,13 @@
               status: errorCount ? 'error' : 'ok',
               dotClass: errorCount ? 'bg-red-500' : 'bg-gray-400',
             });
-            el.addEventListener('click', () => {
-              state.selection.service = svc;
-              state.selection.agentEntryId = null;
-              renderServices();
-              renderAgents();
-              toolList.innerHTML = '';
+	            el.addEventListener('click', () => {
+	              state.selection.service = svc;
+	              state.selection.agentEntryId = null;
+	              state.selection.callEntryId = null;
+	              renderServices();
+	              renderAgents();
+	              toolList.innerHTML = '';
               eventDetails.innerHTML = '<div class="text-sm text-gray-500">Select an item to see details.</div>';
               detailsType.textContent = '';
               detailsStatus.textContent = '';
@@ -679,22 +684,30 @@
           }
         }
 
-        async function showAgent(agentEntry) {
-          if (!agentEntry?.agent_call_id) return;
-          state.selection.agentEntryId = agentEntry.id;
-          renderAgents();
-          renderCalls(agentEntry.agent_name);
-          const resp = await fetch(`/api/traces/agent-calls/${agentEntry.agent_call_id}`);
+	        async function showAgent(agentEntry) {
+	          if (!agentEntry?.agent_call_id) return;
+	          state.selection.agentEntryId = agentEntry.id;
+	          state.selection.callEntryId = null;
+	          renderAgents();
+	          renderCalls(agentEntry.agent_name);
+	          const resp = await fetch(`/api/traces/agent-calls/${agentEntry.agent_call_id}`);
           const payload = await resp.json();
           renderDetailsPayload(payload, 'agent');
         }
 
-        async function showCall(callEntry) {
-          if (!callEntry) return;
-          if (callEntry.event_type === 'http' && callEntry.http_call_id) {
-            const resp = await fetch(`/api/traces/http-calls/${callEntry.http_call_id}`);
-            const payload = await resp.json();
-            renderDetailsPayload(payload, 'http');
+		        async function showCall(callEntry) {
+		          if (!callEntry) return;
+		          state.selection.callEntryId = callEntry.id;
+		          for (const btn of toolList.querySelectorAll('[data-call-entry-id]')) {
+		            const isActive = String(btn.getAttribute('data-call-entry-id')) === String(callEntry.id);
+		            btn.className = isActive
+		              ? 'w-full rounded-xl border border-gray-900 bg-gray-50 px-2.5 py-2 text-left'
+		              : 'w-full rounded-xl border px-2.5 py-2 text-left hover:bg-gray-50';
+		          }
+		          if (callEntry.event_type === 'http' && callEntry.http_call_id) {
+		            const resp = await fetch(`/api/traces/http-calls/${callEntry.http_call_id}`);
+		            const payload = await resp.json();
+		            renderDetailsPayload(payload, 'http');
             return;
           }
           if (callEntry.event_type === 'tool' && callEntry.tool_call_id) {
@@ -725,35 +738,80 @@
           }
         }
 
-        function renderCalls(agentName) {
-          toolList.innerHTML = '';
-          const list = callEntriesFor(state.selection.service, agentName);
-          if (!list.length) {
-            toolList.innerHTML = '<div class="py-2 text-xs text-gray-500">No tool/HTTP calls.</div>';
-            return;
-          }
-          for (const t of list) {
-            const isHttp = t.event_type === 'http';
-            const statusCode = typeof t.status_code === 'number' ? t.status_code : null;
-            const statusLower = String(t.status || '').toLowerCase();
-            const isError = statusLower === 'error' || (statusCode != null && statusCode >= 400);
-            const rightParts = [];
-            if (statusCode != null) rightParts.push(String(statusCode));
-            const duration = fmtDuration(t.duration_ms);
-            if (duration) rightParts.push(duration);
-            const el = selectorCard({
-              title: isHttp ? 'HTTP' : (t.tool_name || 'tool'),
-              subtitle: isHttp ? (t.tool_name || '') : (t.started_at ? new Date(t.started_at).toLocaleTimeString() : ''),
-              right: rightParts.join(' · '),
-              active: false,
-              status: isError ? 'error' : (t.status || 'ok'),
-              statusCode: statusCode,
-              dotClass: isHttp ? (isError ? 'bg-red-500' : 'bg-amber-500') : (isError ? 'bg-red-500' : 'bg-sky-500'),
-            });
-            el.addEventListener('click', () => showCall(t));
-            toolList.appendChild(el);
-          }
-        }
+	        function renderCalls(agentName) {
+	          toolList.innerHTML = '';
+	          const list = callEntriesFor(state.selection.service, agentName);
+	          if (!list.length) {
+	            toolList.innerHTML = '<div class="py-2 text-xs text-gray-500">No tool/HTTP calls.</div>';
+	            return;
+	          }
+
+	          const byId = new Map();
+	          for (const e of list) byId.set(e.id, e);
+
+	          const childrenById = new Map();
+	          for (const e of list) {
+	            if (!byId.has(e.parent_event_id)) continue;
+	            const bucket = childrenById.get(e.parent_event_id) || [];
+	            bucket.push(e);
+	            childrenById.set(e.parent_event_id, bucket);
+	          }
+	          for (const [pid, bucket] of childrenById.entries()) {
+	            bucket.sort((a, b) => (a.seq ?? a.id) - (b.seq ?? b.id));
+	            childrenById.set(pid, bucket);
+	          }
+
+	          const roots = list
+	            .filter(e => !byId.has(e.parent_event_id))
+	            .sort((a, b) => (a.seq ?? a.id) - (b.seq ?? b.id));
+
+	          function makeCallCard(entry, depth) {
+	            const isHttp = entry.event_type === 'http';
+	            const statusCode = typeof entry.status_code === 'number' ? entry.status_code : null;
+	            const statusLower = String(entry.status || '').toLowerCase();
+	            const isError = statusLower === 'error' || (statusCode != null && statusCode >= 400);
+	            const rightParts = [];
+	            if (statusCode != null) rightParts.push(String(statusCode));
+	            const duration = fmtDuration(entry.duration_ms);
+	            if (duration) rightParts.push(duration);
+	            const el = selectorCard({
+	              title: isHttp ? 'HTTP' : (entry.tool_name || 'tool'),
+	              subtitle: isHttp ? (entry.tool_name || '') : (entry.started_at ? new Date(entry.started_at).toLocaleTimeString() : ''),
+	              right: rightParts.join(' · '),
+	              active: entry.id === state.selection.callEntryId,
+	              status: isError ? 'error' : (entry.status || 'ok'),
+	              statusCode: statusCode,
+	              dotClass: isHttp ? (isError ? 'bg-red-500' : 'bg-amber-500') : (isError ? 'bg-red-500' : 'bg-sky-500'),
+	            });
+	            el.setAttribute('data-call-entry-id', entry.id);
+	            el.style.marginLeft = `${depth * 14}px`;
+	            el.addEventListener('click', () => showCall(entry));
+	            return el;
+	          }
+
+	          function renderNode(entry, depth) {
+	            const children = childrenById.get(entry.id) || [];
+	            if (!children.length) return makeCallCard(entry, depth);
+	            const details = document.createElement('details');
+	            details.open = depth === 0;
+	            details.className = 'space-y-1';
+	            const summary = document.createElement('summary');
+	            summary.className = 'list-none';
+	            summary.appendChild(makeCallCard(entry, depth));
+	            details.appendChild(summary);
+	            const wrap = document.createElement('div');
+	            wrap.className = 'space-y-1';
+	            for (const child of children) {
+	              wrap.appendChild(renderNode(child, depth + 1));
+	            }
+	            details.appendChild(wrap);
+	            return details;
+	          }
+
+	          for (const root of roots) {
+	            toolList.appendChild(renderNode(root, 0));
+	          }
+	        }
 
         renderServices();
         renderAgents();

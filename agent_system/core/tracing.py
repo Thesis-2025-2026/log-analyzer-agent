@@ -80,6 +80,21 @@ def _emit_event(payload: Dict[str, Any]) -> Optional[int]:
         return None
 
 
+def _update_event(entry_id: int, payload: Dict[str, Any]) -> bool:
+    url = _proxy_url()
+    if not url:
+        return False
+    try:
+        resp = requests.patch(
+            f"{url}/traces/events/{entry_id}",
+            json=payload,
+            timeout=0.5,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def new_trace_id() -> str:
     return uuid.uuid4().hex
 
@@ -281,52 +296,108 @@ def trace_tool(fn: Callable[..., T], *, tool_name: Optional[str] = None) -> Call
 
         started_at = _utcnow_iso()
         start = time.perf_counter()
+        input_text = _truncate_text(_safe_json_dumps({"args": args, "kwargs": kwargs}))
+        entry_id = _emit_event(
+            {
+                "trace_id": trace_id,
+                "event_type": "tool",
+                "service_name": get_current_service_name(),
+                "agent_name": get_current_agent_name(),
+                "tool_name": name,
+                "parent_event_id": get_parent_event_id(),
+                "started_at": started_at,
+                "ended_at": None,
+                "duration_ms": None,
+                "status": "ok",
+                "seq": next_seq(),
+                "tool_call": {
+                    "input": input_text,
+                    "output": None,
+                },
+            }
+        )
+
+        parent_token = None
+        if entry_id is not None:
+            # Attach nested events (HTTP calls, sub-tools, etc.) as children of this tool span.
+            parent_token = _parent_event_id.set(entry_id)
         try:
             result = fn(*args, **kwargs)
             duration_ms = int((time.perf_counter() - start) * 1000)
             ended_at = _utcnow_iso()
-            payload = {
-                "trace_id": trace_id,
-                "event_type": "tool",
-                "service_name": get_current_service_name(),
-                "agent_name": get_current_agent_name(),
-                "tool_name": name,
-                "parent_event_id": get_parent_event_id(),
-                "started_at": started_at,
-                "ended_at": ended_at,
-                "duration_ms": duration_ms,
-                "status": "ok",
-                "seq": next_seq(),
-                "tool_call": {
-                    "input": _truncate_text(_safe_json_dumps({"args": args, "kwargs": kwargs})),
-                    "output": _truncate_text(_safe_json_dumps(result)),
-                },
-            }
-            _emit_event(payload)
+            output_text = _truncate_text(_safe_json_dumps(result))
+            if entry_id is not None:
+                _update_event(
+                    entry_id,
+                    {
+                        "ended_at": ended_at,
+                        "duration_ms": duration_ms,
+                        "status": "ok",
+                        "error": None,
+                        "tool_call": {"output": output_text},
+                    },
+                )
+            else:
+                _emit_event(
+                    {
+                        "trace_id": trace_id,
+                        "event_type": "tool",
+                        "service_name": get_current_service_name(),
+                        "agent_name": get_current_agent_name(),
+                        "tool_name": name,
+                        "parent_event_id": get_parent_event_id(),
+                        "started_at": started_at,
+                        "ended_at": ended_at,
+                        "duration_ms": duration_ms,
+                        "status": "ok",
+                        "seq": next_seq(),
+                        "tool_call": {
+                            "input": input_text,
+                            "output": output_text,
+                        },
+                    }
+                )
             return result
         except Exception as e:
             duration_ms = int((time.perf_counter() - start) * 1000)
             ended_at = _utcnow_iso()
-            payload = {
-                "trace_id": trace_id,
-                "event_type": "tool",
-                "service_name": get_current_service_name(),
-                "agent_name": get_current_agent_name(),
-                "tool_name": name,
-                "parent_event_id": get_parent_event_id(),
-                "started_at": started_at,
-                "ended_at": ended_at,
-                "duration_ms": duration_ms,
-                "status": "error",
-                "error": str(e),
-                "seq": next_seq(),
-                "tool_call": {
-                    "input": _truncate_text(_safe_json_dumps({"args": args, "kwargs": kwargs})),
-                    "output": None,
-                },
-            }
-            _emit_event(payload)
+            err = str(e)
+            if entry_id is not None:
+                _update_event(
+                    entry_id,
+                    {
+                        "ended_at": ended_at,
+                        "duration_ms": duration_ms,
+                        "status": "error",
+                        "error": err,
+                        "tool_call": {"output": None},
+                    },
+                )
+            else:
+                _emit_event(
+                    {
+                        "trace_id": trace_id,
+                        "event_type": "tool",
+                        "service_name": get_current_service_name(),
+                        "agent_name": get_current_agent_name(),
+                        "tool_name": name,
+                        "parent_event_id": get_parent_event_id(),
+                        "started_at": started_at,
+                        "ended_at": ended_at,
+                        "duration_ms": duration_ms,
+                        "status": "error",
+                        "error": err,
+                        "seq": next_seq(),
+                        "tool_call": {
+                            "input": input_text,
+                            "output": None,
+                        },
+                    }
+                )
             raise
+        finally:
+            if parent_token is not None:
+                _parent_event_id.reset(parent_token)
 
     return wrapper
 
@@ -381,6 +452,7 @@ def instrument_http_call(
         duration_ms = int((time.perf_counter() - start) * 1000)
         ended_at = _utcnow_iso()
         status_code = getattr(result, "status_code", None)
+        is_error = status_code is not None and int(status_code) >= 400
         response_body: Optional[str] = None
         try:
             if hasattr(result, "text"):
@@ -397,7 +469,8 @@ def instrument_http_call(
             "started_at": started_at,
             "ended_at": ended_at,
             "duration_ms": duration_ms,
-            "status": "ok" if (status_code is None or int(status_code) < 500) else "error",
+            "status": "error" if is_error else "ok",
+            "error": f"HTTP {status_code}" if is_error else None,
             "seq": next_seq(),
             "http_call": {
                 "target_service": target_service,

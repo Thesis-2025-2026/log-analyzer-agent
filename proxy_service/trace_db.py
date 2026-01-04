@@ -38,6 +38,16 @@ class TraceStore(Protocol):
     def get_tool_call(self, tool_call_id: int) -> Optional[Dict[str, Any]]: ...
     def get_http_call(self, http_call_id: int) -> Optional[Dict[str, Any]]: ...
     def get_trace(self, trace_id: str) -> Optional[Dict[str, Any]]: ...
+    def update_event(
+        self,
+        entry_id: int,
+        *,
+        ended_at: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        status: Optional[str] = None,
+        error: Optional[str] = None,
+        tool_call_payload: Optional[Dict[str, Any]] = None,
+    ) -> bool: ...
 
 
 class PostgresTraceStore:
@@ -247,6 +257,86 @@ class PostgresTraceStore:
                 )
                 rows = cur.fetchall()
                 return [dict(r) for r in rows]
+        finally:
+            self._put_conn(conn)
+
+    def update_event(
+        self,
+        entry_id: int,
+        *,
+        ended_at: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        status: Optional[str] = None,
+        error: Optional[str] = None,
+        tool_call_payload: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        conn = self._get_conn()
+        try:
+            with conn.cursor(cursor_factory=self._extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, event_type, tool_call_id
+                    FROM trace_entries
+                    WHERE id = %s
+                    """,
+                    (entry_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    conn.rollback()
+                    return False
+
+                # Update trace entry fields
+                updates = []
+                values: List[Any] = []
+                if ended_at is not None:
+                    updates.append("ended_at = %s::timestamptz")
+                    values.append(ended_at)
+                if duration_ms is not None:
+                    updates.append("duration_ms = %s")
+                    values.append(duration_ms)
+                if status is not None:
+                    updates.append("status = %s")
+                    values.append(status)
+                if error is not None:
+                    updates.append("error = %s")
+                    values.append(error)
+                if updates:
+                    values.append(entry_id)
+                    cur.execute(
+                        f"UPDATE trace_entries SET {', '.join(updates)} WHERE id = %s",
+                        tuple(values),
+                    )
+
+                # Update tool payload when applicable
+                if row.get("event_type") == "tool" and row.get("tool_call_id") and tool_call_payload is not None:
+                    tool_updates = []
+                    tool_values: List[Any] = []
+                    if "output" in tool_call_payload:
+                        tool_updates.append("output = %s")
+                        tool_values.append(tool_call_payload.get("output"))
+                    if ended_at is not None:
+                        tool_updates.append("ended_at = %s::timestamptz")
+                        tool_values.append(ended_at)
+                    if duration_ms is not None:
+                        tool_updates.append("duration_ms = %s")
+                        tool_values.append(duration_ms)
+                    if status is not None:
+                        tool_updates.append("status = %s")
+                        tool_values.append(status)
+                    if error is not None:
+                        tool_updates.append("error = %s")
+                        tool_values.append(error)
+
+                    if tool_updates:
+                        tool_values.append(int(row["tool_call_id"]))
+                        cur.execute(
+                            f"UPDATE tool_calls SET {', '.join(tool_updates)} WHERE id = %s",
+                            tuple(tool_values),
+                        )
+
+            conn.commit()
+            return True
         finally:
             self._put_conn(conn)
 

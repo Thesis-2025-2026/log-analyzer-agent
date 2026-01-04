@@ -36,6 +36,14 @@ class TraceEventPayload(BaseModel):
     http_call: Optional[Dict[str, Any]] = None
 
 
+class TraceEventUpdatePayload(BaseModel):
+    ended_at: Optional[str] = None
+    duration_ms: Optional[int] = None
+    status: Optional[str] = None
+    error: Optional[str] = None
+    tool_call: Optional[Dict[str, Any]] = None
+
+
 @router.post("/traces/init")
 async def init_trace(req: TraceInitRequest) -> Dict[str, Any]:
     _db.ensure_trace(req.trace_id, root_service=req.root_service, root_report_id=req.root_report_id)
@@ -79,6 +87,21 @@ async def ingest_events(payload: Any = Body(...)) -> Dict[str, Any]:
         inserted.append(entry_id)
 
     return {"success": True, "inserted": inserted, "count": len(inserted)}
+
+
+@router.patch("/traces/events/{entry_id}")
+async def update_event(entry_id: int, req: TraceEventUpdatePayload) -> Dict[str, Any]:
+    ok = _db.update_event(
+        entry_id,
+        ended_at=req.ended_at,
+        duration_ms=req.duration_ms,
+        status=req.status,
+        error=req.error,
+        tool_call_payload=req.tool_call,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Trace event not found")
+    return {"success": True, "updated": entry_id}
 
 
 @router.get("/traces/{trace_id}")
