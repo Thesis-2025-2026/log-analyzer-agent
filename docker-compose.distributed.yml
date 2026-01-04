@@ -20,6 +20,27 @@ services:
   # ===========================================
   # PROXY/DISPATCHER SERVICE
   # ===========================================
+  proxy-trace-postgres:
+    image: postgres:15
+    container_name: proxy-trace-postgres
+    ports:
+      - "5440:5432"
+    environment:
+      POSTGRES_USER: trace_user
+      POSTGRES_PASSWORD: trace_pass
+      POSTGRES_DB: proxy_traces
+    volumes:
+      - proxy-trace-pg-data:/var/lib/postgresql/data
+      - ./infra/init_proxy_trace_db.sql:/docker-entrypoint-initdb.d/01_init_proxy_trace_db.sql:ro
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trace_user -d proxy_traces"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   proxy:
     build:
       context: .
@@ -33,8 +54,12 @@ services:
       - SERVICE_TIMEOUT=90
       - HEARTBEAT_INTERVAL=30
       - LOG_LEVEL=INFO
+      - PROXY_TRACE_DATABASE_URL=postgresql://trace_user:trace_pass@proxy-trace-postgres:5432/proxy_traces
     networks:
       - agent-network
+    depends_on:
+      proxy-trace-postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
@@ -417,3 +442,5 @@ volumes:
     name: service-deployments-pg-data
   service-deployments-qdrant-data:
     name: service-deployments-qdrant-data
+  proxy-trace-pg-data:
+    name: proxy-trace-pg-data

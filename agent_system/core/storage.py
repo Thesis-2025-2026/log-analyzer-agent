@@ -16,17 +16,24 @@ def _db_params() -> Dict[str, Any]:
     }
 
 
-def insert_report(level: Optional[str], service: Optional[str], content: str, raw_log: Optional[str]) -> Dict[str, Any]:
+def insert_report(
+    level: Optional[str],
+    service: Optional[str],
+    content: str,
+    raw_log: Optional[str],
+    trace_id: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Dict[str, Any]:
     params = _db_params()
     with psycopg2.connect(**params) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO reports (level, service, content, raw_log)
-                VALUES (%s, %s, %s, %s)
-                RETURNING id, created_at, level, service
+                INSERT INTO reports (level, service, title, trace_id, content, raw_log)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, created_at, level, service, title, trace_id
                 """,
-                (level, service, content, raw_log),
+                (level, service, title, trace_id, content, raw_log),
             )
             row = cur.fetchone()
             return dict(row)
@@ -38,7 +45,7 @@ def list_reports(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, created_at, level, service, LEFT(content, 400) AS preview
+                SELECT id, created_at, level, service, title, trace_id, LEFT(content, 400) AS preview
                 FROM reports
                 ORDER BY created_at DESC
                 LIMIT %s OFFSET %s
@@ -55,7 +62,7 @@ def get_report(report_id: int) -> Optional[Dict[str, Any]]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, created_at, level, service, content, raw_log
+                SELECT id, created_at, level, service, title, trace_id, content, raw_log
                 FROM reports
                 WHERE id = %s
                 """,

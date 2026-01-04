@@ -11,8 +11,14 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     level TEXT,
     service TEXT,
+    title TEXT,
+    trace_id TEXT,
     content TEXT NOT NULL,
     raw_log TEXT
 );
 
+-- Safe migration for existing databases
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS title TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_trace_id ON reports (trace_id);
