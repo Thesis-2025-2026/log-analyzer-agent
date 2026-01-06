@@ -73,6 +73,11 @@ def get_main_agent_prompt() -> str:
         "- Query internal knowledge first to check for known patterns\n"
         "- Use discover_services() to understand the service ecosystem\n"
         "- Gather cross-service reports when the error suggests multi-service impact\n"
-        "- Always synthesize all information (local + internal + cross-service) for final report"
+        "- Always synthesize all information (local + internal + cross-service) for final report\n\n"
+        "Output formatting:\n"
+        "- Return your final answer in GitHub-Flavored Markdown (GFM).\n"
+        "- Use headings, bullet lists, and tables when helpful.\n"
+        "- Use links as [label](https://example.com) when relevant.\n"
+        "- Put raw logs/JSON in fenced code blocks (```json).\n"
+        "- Do not include raw HTML. Do not wrap the entire response in a single code block."
     )
-

@@ -18,6 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY agent_system/ ./agent_system/
+COPY detector/ ./detector/
 COPY agent_api/ ./agent_api/
 COPY web/ ./web/
 
@@ -34,4 +35,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run the application
 CMD ["python", "-m", "flask", "--app", "agent_api.app:create_app", "run", "--host", "0.0.0.0", "--port", "8000"]
-

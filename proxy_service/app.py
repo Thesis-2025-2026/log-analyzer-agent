@@ -23,6 +23,7 @@ from proxy_service.models import (
     HealthResponse,
     ServiceStatus,
 )
+from proxy_service.trace_api import router as trace_router
 
 # Configure logging
 logging.basicConfig(
@@ -48,6 +49,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.include_router(trace_router)
 
 # Add CORS middleware
 app.add_middleware(
@@ -241,4 +244,3 @@ if __name__ == "__main__":
         port=config.PORT,
         reload=True
     )
-

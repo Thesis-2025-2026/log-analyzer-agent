@@ -6,8 +6,41 @@
 
 services:
   # ===========================================
+  # REDIS (shared for detectors/log ingestion)
+  # ===========================================
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  # ===========================================
   # PROXY/DISPATCHER SERVICE
   # ===========================================
+  proxy-trace-postgres:
+    image: postgres:15
+    container_name: proxy-trace-postgres
+    ports:
+      - "5440:5432"
+    environment:
+      POSTGRES_USER: trace_user
+      POSTGRES_PASSWORD: trace_pass
+      POSTGRES_DB: proxy_traces
+    volumes:
+      - proxy-trace-pg-data:/var/lib/postgresql/data
+      - ./infra/init_proxy_trace_db.sql:/docker-entrypoint-initdb.d/01_init_proxy_trace_db.sql:ro
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trace_user -d proxy_traces"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   proxy:
     build:
       context: .
@@ -21,8 +54,12 @@ services:
       - SERVICE_TIMEOUT=90
       - HEARTBEAT_INTERVAL=30
       - LOG_LEVEL=INFO
+      - PROXY_TRACE_DATABASE_URL=postgresql://trace_user:trace_pass@proxy-trace-postgres:5432/proxy_traces
     networks:
       - agent-network
+    depends_on:
+      proxy-trace-postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
@@ -159,6 +196,224 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # ===========================================
+  # SERVICE AUTH - Auth Service Agent Cluster
+  # ===========================================
+  service-auth-postgres:
+    image: postgres:15
+    container_name: service-auth-postgres
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: logs_user
+      POSTGRES_PASSWORD: logs_pass
+      POSTGRES_DB: auth_logs
+    volumes:
+      - service-auth-pg-data:/var/lib/postgresql/data
+      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/01_init_db.sql:ro
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logs_user -d auth_logs"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  service-auth-qdrant:
+    image: qdrant/qdrant:latest
+    container_name: service-auth-qdrant
+    ports:
+      - "6335:6333"
+    volumes:
+      - service-auth-qdrant-data:/qdrant/storage
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  service-auth-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: service-auth-api
+    ports:
+      - "8003:8000"
+    env_file:
+      - ./config/service-auth.env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_PROJECT=${OPENAI_PROJECT}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+    depends_on:
+      proxy:
+        condition: service_healthy
+      service-auth-postgres:
+        condition: service_healthy
+      service-auth-qdrant:
+        condition: service_started
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  service-auth-detector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: service-auth-detector
+    command: ["python", "-m", "detector.detector"]
+    env_file:
+      - ./config/service-auth.env
+    environment:
+      - REDIS_HOST=redis
+      - LOGS_CHANNEL=logs:auth
+      - ANOM_CHANNEL=anomalies:auth
+    depends_on:
+      redis:
+        condition: service_started
+      service-auth-postgres:
+        condition: service_healthy
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  service-auth-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: service-auth-consumer
+    command: ["python", "-m", "agent_system.connect_to_detector"]
+    env_file:
+      - ./config/service-auth.env
+    environment:
+      - REDIS_HOST=redis
+      - ANOM_CHANNEL=anomalies:auth
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_PROJECT=${OPENAI_PROJECT}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+    depends_on:
+      redis:
+        condition: service_started
+      service-auth-postgres:
+        condition: service_healthy
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  # ===========================================
+  # SERVICE DEPLOYMENTS - Deployments Service Agent Cluster
+  # ===========================================
+  service-deployments-postgres:
+    image: postgres:15
+    container_name: service-deployments-postgres
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_USER: logs_user
+      POSTGRES_PASSWORD: logs_pass
+      POSTGRES_DB: deployments_logs
+    volumes:
+      - service-deployments-pg-data:/var/lib/postgresql/data
+      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/01_init_db.sql:ro
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logs_user -d deployments_logs"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  service-deployments-qdrant:
+    image: qdrant/qdrant:latest
+    container_name: service-deployments-qdrant
+    ports:
+      - "6336:6333"
+    volumes:
+      - service-deployments-qdrant-data:/qdrant/storage
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  service-deployments-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: service-deployments-api
+    ports:
+      - "8004:8000"
+    env_file:
+      - ./config/service-deployments.env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_PROJECT=${OPENAI_PROJECT}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+    depends_on:
+      proxy:
+        condition: service_healthy
+      service-deployments-postgres:
+        condition: service_healthy
+      service-deployments-qdrant:
+        condition: service_started
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  service-deployments-detector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: service-deployments-detector
+    command: ["python", "-m", "detector.detector"]
+    env_file:
+      - ./config/service-deployments.env
+    environment:
+      - REDIS_HOST=redis
+      - LOGS_CHANNEL=logs:deployments
+      - ANOM_CHANNEL=anomalies:deployments
+    depends_on:
+      redis:
+        condition: service_started
+      service-deployments-postgres:
+        condition: service_healthy
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  service-deployments-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: service-deployments-consumer
+    command: ["python", "-m", "agent_system.connect_to_detector"]
+    env_file:
+      - ./config/service-deployments.env
+    environment:
+      - REDIS_HOST=redis
+      - ANOM_CHANNEL=anomalies:deployments
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_PROJECT=${OPENAI_PROJECT}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+    depends_on:
+      redis:
+        condition: service_started
+      service-deployments-postgres:
+        condition: service_healthy
+    networks:
+      - agent-network
+    restart: unless-stopped
+
 # ===========================================
 # NETWORKS
 # ===========================================
@@ -179,4 +434,13 @@ volumes:
     name: service-b-pg-data
   service-b-qdrant-data:
     name: service-b-qdrant-data
-
+  service-auth-pg-data:
+    name: service-auth-pg-data
+  service-auth-qdrant-data:
+    name: service-auth-qdrant-data
+  service-deployments-pg-data:
+    name: service-deployments-pg-data
+  service-deployments-qdrant-data:
+    name: service-deployments-qdrant-data
+  proxy-trace-pg-data:
+    name: proxy-trace-pg-data
