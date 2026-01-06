@@ -3,93 +3,834 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agent Chat</title>
+  <title>Log Analyzer</title>
   <link href="/assets/styles.css" rel="stylesheet">
+  <style>
+    summary::-webkit-details-marker { display: none; }
+  </style>
 </head>
-<body class="min-h-screen bg-gray-100 text-gray-900">
-  <div class="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-6 md:grid-cols-[220px_1fr]">
-
-    <!-- Sidebar navigation -->
-    <aside class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
+<body class="h-screen overflow-hidden bg-gray-100 text-gray-900">
+  <div class="flex h-screen w-full">
+    <!-- Reports side panel -->
+    <aside class="flex w-[420px] shrink-0 flex-col border-r bg-white">
       <div class="border-b px-4 py-3">
-        <h2 class="text-sm font-semibold text-gray-700">Navigation</h2>
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-xs uppercase tracking-wide text-gray-500">Reports</p>
+            <h2 class="text-sm font-semibold text-gray-900">Latest analyses</h2>
+          </div>
+          <button id="refreshReports" class="rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Refresh</button>
+        </div>
+        <div class="mt-3 flex items-center gap-2">
+          <input id="reportSearch" placeholder="Search service / level / text…" class="w-full rounded-xl border px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
+        </div>
+        <div class="mt-2 flex items-center justify-between text-xs text-gray-500">
+          <span id="reportCount"></span>
+          <span id="reportHint">Click a report to open</span>
+        </div>
       </div>
-      <nav class="p-2 text-sm">
-        <a href="/" class="block rounded-lg bg-gray-900 px-3 py-2 font-medium text-white">Chat</a>
-        <a href="/reports" class="mt-1 block rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-50">Reports</a>
-      </nav>
+      <div id="reportsList" class="flex-1 overflow-auto p-2"></div>
     </aside>
 
-    <!-- Main chat panel -->
-    <main class="flex h-[85vh] flex-col rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
-      <!-- Header -->
-      <div class="flex items-center justify-between border-b px-4 py-3">
-        <h1 class="text-sm font-semibold text-gray-800">Chat with Agent</h1>
-        <button id="newBtn" class="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">New chat</button>
+    <!-- Main content -->
+    <main class="min-w-0 flex-1 overflow-y-auto">
+      <!-- Analyze view -->
+      <div id="viewAnalyze" class="min-w-0">
+        <div class="sticky top-0 z-10 border-b bg-white px-6 py-4">
+          <h2 class="text-base font-semibold text-gray-900">Analyze</h2>
+          <p class="mt-1 text-sm text-gray-600">Paste a log or JSON payload and generate a report.</p>
+        </div>
+
+        <div class="space-y-4 p-6">
+          <section class="rounded-2xl border bg-white p-4 shadow-sm">
+            <div class="flex items-start gap-3">
+              <textarea
+                id="input"
+                rows="8"
+                placeholder="Paste log or JSON… (Shift+Enter = newline)"
+                class="h-32 w-full resize-y rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-inner focus:border-gray-400 focus:outline-none"></textarea>
+              <div class="flex shrink-0 flex-col gap-2">
+                <button
+                  id="sendBtn"
+                  class="h-11 rounded-xl bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                  Generate
+                </button>
+                <button
+                  id="openLatestBtn"
+                  class="hidden h-11 rounded-xl border px-4 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  Open report
+                </button>
+              </div>
+            </div>
+            <div class="mt-2 flex items-center justify-between">
+              <p class="text-xs text-gray-500">Enter to submit · Shift+Enter for newline</p>
+              <span id="status" class="text-xs text-gray-500"></span>
+            </div>
+          </section>
+
+          <section class="flex min-h-0 flex-col rounded-2xl border bg-white shadow-sm">
+            <header class="flex items-center justify-between border-b px-5 py-4">
+              <div class="min-w-0">
+                <p class="text-xs uppercase tracking-wide text-gray-500">Latest analysis</p>
+                <h3 class="truncate text-sm font-semibold text-gray-900" id="resultTitle">No report yet</h3>
+              </div>
+              <span id="latestMeta" class="shrink-0 text-xs text-gray-500"></span>
+            </header>
+            <article id="resultBody" class="md px-5 py-4 text-sm leading-6 text-gray-800 break-words">
+              Paste a log and hit Generate to see the analysis here.
+            </article>
+          </section>
+        </div>
       </div>
 
-      <ul id="messages" class="flex-1 space-y-4 overflow-y-auto p-4 bg-gradient-to-b from-white to-gray-50"></ul>
-
-      <div class="border-t p-3">
-        <div class="flex items-start gap-2">
-          <textarea id="input" rows="3" placeholder="Paste log or JSON… (Shift+Enter = newline)" class="h-24 w-full resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-inner focus:border-gray-400 focus:outline-none"></textarea>
-          <button id="sendBtn" class="h-10 shrink-0 rounded-xl bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Generate</button>
+      <!-- Report view -->
+      <div id="viewReport" class="hidden min-w-0">
+        <div class="sticky top-0 z-10 border-b bg-white px-6 py-4">
+          <div class="flex items-center gap-3">
+            <button id="backToAnalyze" class="rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Analyze</button>
+            <div class="min-w-0">
+              <h2 class="text-base font-semibold leading-6 text-gray-900" id="reportTitle" style="word-break:break-word;">Report</h2>
+              <div class="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                <span id="reportMeta"></span>
+              </div>
+            </div>
+            <div class="ml-auto flex items-center gap-2">
+              <button id="tabReport" class="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white">Report</button>
+              <button id="tabEvents" class="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Events</button>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-2" id="reportBadges"></div>
         </div>
-        <p class="mt-2 text-xs text-gray-500">Enter to submit · Shift+Enter for newline</p>
+
+        <div id="panelReport" class="p-6">
+          <section class="rounded-2xl border bg-white p-4 shadow-sm">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Analysis</h3>
+            <div id="reportContent" class="md mt-3 break-words text-sm leading-6 text-gray-800"></div>
+
+            <div class="mt-6 border-t pt-4">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Raw log</h3>
+                <button id="toggleRaw" class="text-xs font-medium text-gray-700 hover:text-gray-900">Show</button>
+              </div>
+              <pre id="reportRaw" class="mt-3 hidden max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded-xl border bg-gray-50 p-3 text-[13px] text-gray-800"></pre>
+            </div>
+          </section>
+        </div>
+
+        <div id="panelEvents" class="hidden space-y-4 bg-gray-50 p-6">
+          <div class="rounded-2xl border bg-white shadow-sm">
+            <div class="border-b px-4 py-3">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Trace</h3>
+              <p class="mt-1 text-xs text-gray-500">Select a service, agent, and call.</p>
+            </div>
+            <div class="grid grid-cols-3 gap-3 p-4">
+              <section class="min-w-0">
+                <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Services</div>
+                <div id="svcList" class="max-h-[360px] space-y-2 overflow-auto pr-1"></div>
+              </section>
+              <section class="min-w-0">
+                <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Agents</div>
+                <div id="agentList" class="max-h-[360px] space-y-2 overflow-auto pr-1"></div>
+              </section>
+              <section class="min-w-0">
+                <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Calls</div>
+                <div id="toolList" class="max-h-[360px] space-y-2 overflow-auto pr-1"></div>
+              </section>
+            </div>
+          </div>
+
+          <div class="rounded-2xl border bg-white shadow-sm">
+            <div class="border-b px-5 py-4">
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold text-gray-900">Details</h3>
+                <span id="detailsType" class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700"></span>
+                <span id="detailsStatus" class="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700"></span>
+              </div>
+              <div id="detailsSubtitle" class="mt-1 text-xs text-gray-500"></div>
+            </div>
+            <div id="eventDetails" class="p-5"></div>
+          </div>
+        </div>
       </div>
     </main>
   </div>
 
+  <script src="/assets/markdown.js"></script>
   <script>
-    const messagesEl = document.getElementById('messages');
+    const { renderMarkdownInto, renderPlainInto } = (window.Markdown || {});
     const inputEl = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
-    const newBtn = document.getElementById('newBtn');
+    const openLatestBtn = document.getElementById('openLatestBtn');
+    const resultTitle = document.getElementById('resultTitle');
+    const resultBody = document.getElementById('resultBody');
+    const statusEl = document.getElementById('status');
+    const latestMeta = document.getElementById('latestMeta');
 
-    function addBlock(roleLabel, color, text) {
-      const li = document.createElement('li');
-      li.className = 'rounded-xl border p-4 shadow-sm bg-white';
-      li.style.borderLeftWidth = '4px';
-      li.style.borderLeftColor = color;
+    const reportsList = document.getElementById('reportsList');
+    const reportCount = document.getElementById('reportCount');
+    const reportSearch = document.getElementById('reportSearch');
+    const refreshReports = document.getElementById('refreshReports');
 
-      const label = document.createElement('div');
-      label.className = 'mb-1 text-[11px] font-semibold uppercase tracking-wider';
-      label.style.color = color;
-      label.textContent = roleLabel;
+    const viewAnalyze = document.getElementById('viewAnalyze');
+    const viewReport = document.getElementById('viewReport');
+    const backToAnalyze = document.getElementById('backToAnalyze');
 
-      const body = document.createElement('div');
-      body.className = 'whitespace-pre-wrap leading-6';
-      body.textContent = text;
+    const reportTitle = document.getElementById('reportTitle');
+    const reportMeta = document.getElementById('reportMeta');
+    const reportBadges = document.getElementById('reportBadges');
+    const reportContent = document.getElementById('reportContent');
+    const reportRaw = document.getElementById('reportRaw');
+    const toggleRaw = document.getElementById('toggleRaw');
 
-      li.appendChild(label);
-      li.appendChild(body);
-      messagesEl.appendChild(li);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+    const tabReport = document.getElementById('tabReport');
+    const tabEvents = document.getElementById('tabEvents');
+    const panelReport = document.getElementById('panelReport');
+    const panelEvents = document.getElementById('panelEvents');
+
+    const svcList = document.getElementById('svcList');
+    const agentList = document.getElementById('agentList');
+    const toolList = document.getElementById('toolList');
+    const eventDetails = document.getElementById('eventDetails');
+    const detailsType = document.getElementById('detailsType');
+    const detailsStatus = document.getElementById('detailsStatus');
+    const detailsSubtitle = document.getElementById('detailsSubtitle');
+
+	    const state = {
+	      reports: [],
+	      selectedReportId: null,
+	      report: null,
+	      events: null,
+	      selection: { service: null, agentEntryId: null, callEntryId: null },
+	      latestReportId: null,
+	    };
+
+    function canonicalLevel(level) {
+      const l = (level || '').toString().trim().toLowerCase();
+      if (!l) return 'unknown';
+      if (l === 'error' || l === 'err' || l.includes('error') || l === 'critical' || l === 'fatal') return 'error';
+      if (l === 'warning' || l === 'warn' || l.includes('warn')) return 'warning';
+      if (l === 'info' || l === 'debug' || l === 'trace') return 'info';
+      return 'unknown';
     }
 
-    function addUser(text) { addBlock('User', '#2563eb', text); }
-    function addReport(text) { addBlock('Report', '#059669', text); }
+    function levelLabel(level) {
+      const l = canonicalLevel(level);
+      if (l === 'error') return 'Error';
+      if (l === 'warning') return 'Warning';
+      if (l === 'info') return 'Info';
+      return 'Unknown';
+    }
+
+    function levelPillStyle(level) {
+      const l = canonicalLevel(level);
+      const map = {
+        error: 'background:#fee2e2;color:#b91c1c;',
+        warning: 'background:#fef9c3;color:#a16207;',
+        info: 'background:#dbeafe;color:#1d4ed8;',
+        unknown: 'background:#ede9fe;color:#6d28d9;',
+      };
+      return map[l] || map.unknown;
+    }
+
+    function levelDotStyle(level) {
+      const l = canonicalLevel(level);
+      const map = {
+        error: 'background:#ef4444;',
+        warning: 'background:#eab308;',
+        info: 'background:#3b82f6;',
+        unknown: 'background:#a855f7;',
+      };
+      return map[l] || map.unknown;
+    }
+
+    function hashHue(str) {
+      let h = 0;
+      for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+      return h % 360;
+    }
+
+    function servicePill(service) {
+      const hue = hashHue(service || 'unknown');
+      return `background: hsl(${hue} 70% 92%); color: hsl(${hue} 45% 25%); border-color: hsl(${hue} 55% 82%);`;
+    }
+
+    function setView(view) {
+      if (view === 'report') {
+        viewAnalyze.classList.add('hidden');
+        viewReport.classList.remove('hidden');
+        return;
+      }
+      viewReport.classList.add('hidden');
+      viewAnalyze.classList.remove('hidden');
+    }
+
+    function setActiveRoute(path) {
+      if (path.startsWith('/report/')) {
+        setView('report');
+      } else {
+        setView('analyze');
+      }
+    }
+
+    function navigate(path) {
+      history.pushState({}, '', path);
+      router();
+    }
+
+    window.addEventListener('popstate', router);
+    backToAnalyze.addEventListener('click', () => navigate('/'));
+
+    function parseReportIdFromPath() {
+      const m = window.location.pathname.match(/^\/report\/(\d+)$/);
+      return m ? Number(m[1]) : null;
+    }
+
+    function fmtDuration(ms) {
+      if (ms == null) return '';
+      if (ms < 1000) return `${ms}ms`;
+      return `${(ms/1000).toFixed(2)}s`;
+    }
+
+    function formatWhen(iso) {
+      try { return iso ? new Date(iso).toLocaleString() : ''; } catch { return ''; }
+    }
+
+    function renderReportsList() {
+      const q = (reportSearch.value || '').toLowerCase().trim();
+      const items = q
+        ? state.reports.filter(r =>
+            String(r.id).includes(q)
+            || String(r.service || '').toLowerCase().includes(q)
+            || String(r.level || '').toLowerCase().includes(q)
+            || String(r.preview || '').toLowerCase().includes(q)
+          )
+        : state.reports;
+
+      reportsList.innerHTML = '';
+      reportCount.textContent = `${items.length} report${items.length === 1 ? '' : 's'}`;
+
+      if (!items.length) {
+        reportsList.innerHTML = '<div class="px-3 py-6 text-sm text-gray-500">No reports yet.</div>';
+        return;
+      }
+
+      for (const r of items) {
+        const dotStyle = levelDotStyle(r.level);
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'group w-full rounded-2xl border px-3 py-3 text-left hover:bg-gray-50';
+        if (state.selectedReportId === r.id) {
+          el.className = 'group w-full rounded-2xl border border-gray-900 bg-gray-50 px-3 py-3 text-left';
+        }
+        const titleText = (r.title || '').trim() || `Report #${r.id}`;
+        const levelText = levelLabel(r.level);
+        const pillStyle = levelPillStyle(r.level);
+        el.innerHTML = `
+              <div class="flex items-start gap-3">
+                <div class="mt-1 h-2 w-2 shrink-0 rounded-full" style="${dotStyle}"></div>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-start justify-between gap-2">
+                    <div data-title class="min-w-0 flex-1 whitespace-normal break-words text-sm font-semibold leading-5 text-gray-900"></div>
+                    <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold" style="${pillStyle}">${levelText}</span>
+                  </div>
+                  <div class="mt-1 truncate text-xs text-gray-500">${formatWhen(r.created_at)}</div>
+                </div>
+              </div>
+        `;
+        el.querySelector('[data-title]').textContent = titleText;
+        el.addEventListener('click', () => navigate(`/report/${r.id}`));
+        reportsList.appendChild(el);
+      }
+    }
+
+    async function loadReports() {
+      try {
+        const res = await fetch('/api/reports');
+        const data = await res.json();
+        if (!res.ok) {
+          reportsList.innerHTML = `<div class="px-3 py-6 text-sm text-red-600">${data.error || 'Failed to load reports'}</div>`;
+          return;
+        }
+        state.reports = data.items || [];
+        renderReportsList();
+      } catch (e) {
+        reportsList.innerHTML = '<div class="px-3 py-6 text-sm text-red-600">Network error loading reports.</div>';
+      }
+    }
+
+    reportSearch.addEventListener('input', renderReportsList);
+    refreshReports.addEventListener('click', loadReports);
+
+    function setReportTab(which) {
+      if (which === 'events') {
+        tabEvents.className = 'rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white';
+        tabReport.className = 'rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50';
+        panelEvents.classList.remove('hidden');
+        panelReport.classList.add('hidden');
+      } else {
+        tabReport.className = 'rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white';
+        tabEvents.className = 'rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50';
+        panelReport.classList.remove('hidden');
+        panelEvents.classList.add('hidden');
+      }
+    }
+
+    tabReport.addEventListener('click', () => setReportTab('report'));
+    tabEvents.addEventListener('click', async () => {
+      setReportTab('events');
+      if (state.selectedReportId) await loadEvents(state.selectedReportId);
+    });
+
+    toggleRaw.addEventListener('click', () => {
+      const isHidden = reportRaw.classList.contains('hidden');
+      if (isHidden) {
+        reportRaw.classList.remove('hidden');
+        toggleRaw.textContent = 'Hide';
+      } else {
+        reportRaw.classList.add('hidden');
+        toggleRaw.textContent = 'Show';
+      }
+    });
+
+    function renderReportHeader(report) {
+      reportBadges.innerHTML = '';
+      const title = (report.title || '').trim();
+      reportTitle.textContent = title ? title : `Report #${report.id}`;
+      reportMeta.textContent = `${formatWhen(report.created_at)} · ${report.service || 'unknown'}`;
+      const levelEl = document.createElement('span');
+      levelEl.className = 'rounded-full px-2 py-0.5 text-[11px] font-semibold';
+      levelEl.setAttribute('style', levelPillStyle(report.level));
+      levelEl.textContent = levelLabel(report.level);
+      reportBadges.appendChild(levelEl);
+    }
+
+    async function loadReport(rid) {
+      setActiveRoute(`/report/${rid}`);
+      state.selectedReportId = rid;
+      renderReportsList();
+      setReportTab('report');
+      reportContent.textContent = 'Loading…';
+      reportRaw.textContent = '';
+      toggleRaw.textContent = 'Show';
+      reportRaw.classList.add('hidden');
+
+      try {
+        const res = await fetch(`/api/reports/${rid}`);
+        const data = await res.json();
+        if (!res.ok) {
+          reportContent.textContent = data.error || 'Failed to load report.';
+          return;
+        }
+        state.report = data;
+        renderReportHeader(data);
+        if (renderMarkdownInto) {
+          renderMarkdownInto(reportContent, data.content || '');
+        } else {
+          reportContent.textContent = data.content || '';
+        }
+        reportRaw.textContent = data.raw_log || '';
+      } catch (e) {
+        reportContent.textContent = 'Network error loading report.';
+      }
+    }
+
+    function badge(kind, text) {
+      const map = {
+        agent: 'bg-violet-100 text-violet-700',
+        tool: 'bg-sky-100 text-sky-700',
+        http: 'bg-amber-100 text-amber-700',
+      };
+      const cls = map[kind] || 'bg-gray-100 text-gray-700';
+      return `<span class="rounded-full ${cls} px-2 py-0.5 text-[11px] font-medium">${text}</span>`;
+    }
+
+    function safeParseJsonMaybe(value) {
+      if (value == null) return { ok: true, value: null, isJson: false };
+      if (typeof value !== 'string') return { ok: true, value, isJson: false };
+      const trimmed = value.trim();
+      if (!trimmed || trimmed === 'null') return { ok: true, value: null, isJson: false };
+      if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return { ok: true, value, isJson: false };
+      try {
+        return { ok: true, value: JSON.parse(trimmed), isJson: true };
+      } catch {
+        return { ok: false, value, isJson: false };
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+    }
+
+    function renderDetailsPayload(payload, type) {
+      eventDetails.innerHTML = '';
+      detailsType.textContent = type ? type.toUpperCase() : '';
+      detailsStatus.textContent = payload.status ? payload.status.toUpperCase() : '';
+      detailsStatus.className = `ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium ${payload.status === 'error' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`;
+
+      const subtitleParts = [];
+      if (payload.service_name) subtitleParts.push(payload.service_name);
+      if (payload.agent_name) subtitleParts.push(payload.agent_name);
+      if (payload.tool_name) subtitleParts.push(payload.tool_name);
+      detailsSubtitle.textContent = subtitleParts.join(' · ');
+
+      if (type === 'http') {
+        const req = safeParseJsonMaybe(payload.request_body);
+        const res = safeParseJsonMaybe(payload.response_body);
+        eventDetails.innerHTML = `
+          <div class="space-y-4">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                ${badge('http', payload.method || 'HTTP')}
+                ${badge('tool', payload.target_service || 'target')}
+                <span class="text-xs text-gray-500">${fmtDuration(payload.duration_ms)}</span>
+                <span class="ml-auto text-xs text-gray-500">status_code: ${payload.status_code ?? ''}</span>
+              </div>
+              <div class="mt-2 break-words font-mono text-[13px] text-gray-800">${escapeHtml(payload.url || '')}</div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-gray-600">Request</div>
+              <div id="httpReq" class="md mt-2"></div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-gray-600">Response</div>
+              <div id="httpRes" class="md mt-2"></div>
+            </div>
+            ${payload.error ? `<div><div class="text-xs font-semibold text-gray-600">Error</div><pre class="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-xl border bg-red-50 p-3 text-[13px] text-red-800">${escapeHtml(payload.error)}</pre></div>` : ''}
+          </div>
+        `;
+        const reqText = req.isJson ? JSON.stringify(req.value, null, 2) : String(req.value ?? 'null');
+        const resText = res.isJson ? JSON.stringify(res.value, null, 2) : String(res.value ?? 'null');
+        const httpReqEl = eventDetails.querySelector('#httpReq');
+        const httpResEl = eventDetails.querySelector('#httpRes');
+        if (renderMarkdownInto && httpReqEl && httpResEl) {
+          renderMarkdownInto(httpReqEl, `\`\`\`json\n${reqText}\n\`\`\``);
+          renderMarkdownInto(httpResEl, `\`\`\`json\n${resText}\n\`\`\``);
+        } else {
+          if (httpReqEl) httpReqEl.textContent = reqText;
+          if (httpResEl) httpResEl.textContent = resText;
+        }
+        return;
+      }
+
+      if (type === 'agent') {
+        eventDetails.innerHTML = `
+          <div class="space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+              ${badge('agent', payload.agent_name || 'agent')}
+              <span class="text-xs text-gray-500">${fmtDuration(payload.duration_ms)}</span>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-gray-600">Prompt</div>
+              <pre class="mt-2 max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-xl border bg-gray-50 p-3 text-[13px]">${escapeHtml(payload.prompt || '')}</pre>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-gray-600">Response</div>
+              <div id="agentResp" class="md mt-2"></div>
+            </div>
+            ${payload.error ? `<div><div class="text-xs font-semibold text-gray-600">Error</div><pre class="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-xl border bg-red-50 p-3 text-[13px] text-red-800">${escapeHtml(payload.error)}</pre></div>` : ''}
+          </div>
+        `;
+        const agentRespEl = eventDetails.querySelector('#agentResp');
+        if (renderMarkdownInto && agentRespEl) {
+          renderMarkdownInto(agentRespEl, payload.response || '');
+        } else if (agentRespEl) {
+          agentRespEl.textContent = payload.response || '';
+        }
+        return;
+      }
+
+      if (type === 'tool') {
+        const input = safeParseJsonMaybe(payload.input);
+        const output = safeParseJsonMaybe(payload.output);
+        eventDetails.innerHTML = `
+          <div class="space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+              ${badge('tool', payload.tool_name || 'tool')}
+              <span class="text-xs text-gray-500">${fmtDuration(payload.duration_ms)}</span>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-gray-600">Input</div>
+              <div id="toolIn" class="md mt-2"></div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-gray-600">Output</div>
+              <div id="toolOut" class="md mt-2"></div>
+            </div>
+            ${payload.error ? `<div><div class="text-xs font-semibold text-gray-600">Error</div><pre class="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-xl border bg-red-50 p-3 text-[13px] text-red-800">${escapeHtml(payload.error)}</pre></div>` : ''}
+          </div>
+        `;
+        const inputText = input.isJson ? JSON.stringify(input.value, null, 2) : String(input.value ?? 'null');
+        const outputText = output.isJson ? JSON.stringify(output.value, null, 2) : String(output.value ?? 'null');
+        const toolInEl = eventDetails.querySelector('#toolIn');
+        const toolOutEl = eventDetails.querySelector('#toolOut');
+        if (renderMarkdownInto && toolInEl && toolOutEl) {
+          renderMarkdownInto(toolInEl, `\`\`\`json\n${inputText}\n\`\`\``);
+          if (output.isJson) {
+            renderMarkdownInto(toolOutEl, `\`\`\`json\n${outputText}\n\`\`\``);
+          } else {
+            renderMarkdownInto(toolOutEl, String(output.value ?? ''));
+          }
+        } else {
+          if (toolInEl) toolInEl.textContent = inputText;
+          if (toolOutEl) toolOutEl.textContent = outputText;
+        }
+      }
+    }
+
+    function selectorCard({ title, subtitle, right, active, dotClass, status, statusCode }) {
+      const safeTitle = escapeHtml(title || '');
+      const safeSubtitle = escapeHtml(subtitle || '');
+      const safeRight = escapeHtml(right || '');
+      const statusLower = String(status || '').toLowerCase();
+      const isError = statusLower === 'error' || (typeof statusCode === 'number' && statusCode >= 400);
+      const statusPill = isError
+        ? '<span class="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">ERROR</span>'
+        : '';
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'w-full rounded-xl border px-2.5 py-2 text-left hover:bg-gray-50';
+      if (active) el.className = 'w-full rounded-xl border border-gray-900 bg-gray-50 px-2.5 py-2 text-left';
+      el.innerHTML = `
+        <div class="flex items-start gap-2">
+          <div class="mt-1 h-2 w-2 shrink-0 rounded-full ${dotClass || 'bg-gray-300'}"></div>
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-xs font-semibold text-gray-900">${safeTitle}</div>
+            <div class="mt-0.5 truncate text-[11px] text-gray-500">${safeSubtitle}</div>
+          </div>
+          <div class="shrink-0">
+            <div class="flex items-center gap-1 text-[11px] text-gray-500">
+              ${statusPill}
+              ${safeRight ? `<span>${safeRight}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+      return el;
+    }
+
+    async function loadEvents(rid) {
+      svcList.innerHTML = '<div class="py-2 text-xs text-gray-500">Loading…</div>';
+      agentList.innerHTML = '';
+      toolList.innerHTML = '';
+      eventDetails.innerHTML = '<div class="text-sm text-gray-500">Select an item to see details.</div>';
+      detailsType.textContent = '';
+      detailsStatus.textContent = '';
+      detailsSubtitle.textContent = '';
+
+      try {
+        const res = await fetch(`/api/reports/${rid}/events`);
+        const data = await res.json();
+        if (!res.ok) {
+          svcList.innerHTML = `<div class="py-2 text-xs text-red-600">${data.error || 'Failed to load events'}</div>`;
+          return;
+        }
+        const entries = data.entries || [];
+        if (!entries.length) {
+          svcList.innerHTML = '<div class="py-2 text-xs text-gray-500">No events recorded.</div>';
+          return;
+        }
+
+	        const services = Array.from(new Set(entries.map(e => e.service_name || 'unknown')));
+	        if (!state.selection.service || !services.includes(state.selection.service)) {
+	          state.selection.service = services[0];
+	          state.selection.agentEntryId = null;
+	          state.selection.callEntryId = null;
+	        }
+
+        function agentEntriesFor(serviceName) {
+          return entries
+            .filter(e => (e.service_name || 'unknown') === serviceName && e.event_type === 'agent' && e.agent_call_id)
+            .sort((a, b) => (a.seq ?? a.id) - (b.seq ?? b.id));
+        }
+
+        function callEntriesFor(serviceName, agentName) {
+          return entries
+            .filter(e => (e.service_name || 'unknown') === serviceName
+              && (e.event_type === 'tool' || e.event_type === 'http')
+              && (agentName ? (e.agent_name === agentName) : true))
+            .sort((a, b) => (a.seq ?? a.id) - (b.seq ?? b.id));
+        }
+
+        function renderServices() {
+          svcList.innerHTML = '';
+          for (const svc of services) {
+            const svcEntries = entries.filter(e => (e.service_name || 'unknown') === svc);
+            const errorCount = svcEntries.filter(e => String(e.status || '').toLowerCase() === 'error').length;
+            const right = errorCount ? `${errorCount} err` : '';
+            const el = selectorCard({
+              title: svc,
+              subtitle: `${svcEntries.length} events`,
+              right,
+              active: svc === state.selection.service,
+              status: errorCount ? 'error' : 'ok',
+              dotClass: errorCount ? 'bg-red-500' : 'bg-gray-400',
+            });
+	            el.addEventListener('click', () => {
+	              state.selection.service = svc;
+	              state.selection.agentEntryId = null;
+	              state.selection.callEntryId = null;
+	              renderServices();
+	              renderAgents();
+	              toolList.innerHTML = '';
+              eventDetails.innerHTML = '<div class="text-sm text-gray-500">Select an item to see details.</div>';
+              detailsType.textContent = '';
+              detailsStatus.textContent = '';
+              detailsSubtitle.textContent = '';
+            });
+            svcList.appendChild(el);
+          }
+        }
+
+	        async function showAgent(agentEntry) {
+	          if (!agentEntry?.agent_call_id) return;
+	          state.selection.agentEntryId = agentEntry.id;
+	          state.selection.callEntryId = null;
+	          renderAgents();
+	          renderCalls(agentEntry.agent_name);
+	          const resp = await fetch(`/api/traces/agent-calls/${agentEntry.agent_call_id}`);
+          const payload = await resp.json();
+          renderDetailsPayload(payload, 'agent');
+        }
+
+		        async function showCall(callEntry) {
+		          if (!callEntry) return;
+		          state.selection.callEntryId = callEntry.id;
+		          for (const btn of toolList.querySelectorAll('[data-call-entry-id]')) {
+		            const isActive = String(btn.getAttribute('data-call-entry-id')) === String(callEntry.id);
+		            btn.className = isActive
+		              ? 'w-full rounded-xl border border-gray-900 bg-gray-50 px-2.5 py-2 text-left'
+		              : 'w-full rounded-xl border px-2.5 py-2 text-left hover:bg-gray-50';
+		          }
+		          if (callEntry.event_type === 'http' && callEntry.http_call_id) {
+		            const resp = await fetch(`/api/traces/http-calls/${callEntry.http_call_id}`);
+		            const payload = await resp.json();
+		            renderDetailsPayload(payload, 'http');
+            return;
+          }
+          if (callEntry.event_type === 'tool' && callEntry.tool_call_id) {
+            const resp = await fetch(`/api/traces/tool-calls/${callEntry.tool_call_id}`);
+            const payload = await resp.json();
+            renderDetailsPayload(payload, 'tool');
+          }
+        }
+
+        function renderAgents() {
+          agentList.innerHTML = '';
+          const list = agentEntriesFor(state.selection.service);
+          if (!list.length) {
+            agentList.innerHTML = '<div class="py-2 text-xs text-gray-500">No agent calls.</div>';
+            return;
+          }
+          for (const a of list) {
+            const el = selectorCard({
+              title: a.agent_name || 'agent',
+              subtitle: a.started_at ? new Date(a.started_at).toLocaleTimeString() : '',
+              right: fmtDuration(a.duration_ms),
+              active: a.id === state.selection.agentEntryId,
+              status: a.status,
+              dotClass: a.status === 'error' ? 'bg-red-500' : 'bg-violet-500',
+            });
+            el.addEventListener('click', () => showAgent(a));
+            agentList.appendChild(el);
+          }
+        }
+
+	        function renderCalls(agentName) {
+	          toolList.innerHTML = '';
+	          const list = callEntriesFor(state.selection.service, agentName);
+	          if (!list.length) {
+	            toolList.innerHTML = '<div class="py-2 text-xs text-gray-500">No tool/HTTP calls.</div>';
+	            return;
+	          }
+
+	          const byId = new Map();
+	          for (const e of list) byId.set(e.id, e);
+
+	          const childrenById = new Map();
+	          for (const e of list) {
+	            if (!byId.has(e.parent_event_id)) continue;
+	            const bucket = childrenById.get(e.parent_event_id) || [];
+	            bucket.push(e);
+	            childrenById.set(e.parent_event_id, bucket);
+	          }
+	          for (const [pid, bucket] of childrenById.entries()) {
+	            bucket.sort((a, b) => (a.seq ?? a.id) - (b.seq ?? b.id));
+	            childrenById.set(pid, bucket);
+	          }
+
+	          const roots = list
+	            .filter(e => !byId.has(e.parent_event_id))
+	            .sort((a, b) => (a.seq ?? a.id) - (b.seq ?? b.id));
+
+	          function makeCallCard(entry, depth) {
+	            const isHttp = entry.event_type === 'http';
+	            const statusCode = typeof entry.status_code === 'number' ? entry.status_code : null;
+	            const statusLower = String(entry.status || '').toLowerCase();
+	            const isError = statusLower === 'error' || (statusCode != null && statusCode >= 400);
+	            const rightParts = [];
+	            if (statusCode != null) rightParts.push(String(statusCode));
+	            const duration = fmtDuration(entry.duration_ms);
+	            if (duration) rightParts.push(duration);
+	            const el = selectorCard({
+	              title: isHttp ? 'HTTP' : (entry.tool_name || 'tool'),
+	              subtitle: isHttp ? (entry.tool_name || '') : (entry.started_at ? new Date(entry.started_at).toLocaleTimeString() : ''),
+	              right: rightParts.join(' · '),
+	              active: entry.id === state.selection.callEntryId,
+	              status: isError ? 'error' : (entry.status || 'ok'),
+	              statusCode: statusCode,
+	              dotClass: isHttp ? (isError ? 'bg-red-500' : 'bg-amber-500') : (isError ? 'bg-red-500' : 'bg-sky-500'),
+	            });
+	            el.setAttribute('data-call-entry-id', entry.id);
+	            el.style.marginLeft = `${depth * 14}px`;
+	            el.addEventListener('click', () => showCall(entry));
+	            return el;
+	          }
+
+	          function renderNode(entry, depth) {
+	            const children = childrenById.get(entry.id) || [];
+	            if (!children.length) return makeCallCard(entry, depth);
+	            const details = document.createElement('details');
+	            details.open = depth === 0;
+	            details.className = 'space-y-1';
+	            const summary = document.createElement('summary');
+	            summary.className = 'list-none';
+	            summary.appendChild(makeCallCard(entry, depth));
+	            details.appendChild(summary);
+	            const wrap = document.createElement('div');
+	            wrap.className = 'space-y-1';
+	            for (const child of children) {
+	              wrap.appendChild(renderNode(child, depth + 1));
+	            }
+	            details.appendChild(wrap);
+	            return details;
+	          }
+
+	          for (const root of roots) {
+	            toolList.appendChild(renderNode(root, 0));
+	          }
+	        }
+
+        renderServices();
+        renderAgents();
+      } catch (e) {
+        svcList.innerHTML = '<div class="py-2 text-xs text-red-600">Network error loading events.</div>';
+      }
+    }
 
     async function send() {
       const text = inputEl.value.trim();
       if (!text) return;
 
-      addUser(text);
-      // placeholder report while waiting
-      const placeholder = document.createElement('li');
-      placeholder.className = 'rounded-xl border p-4 shadow-sm bg-white';
-      placeholder.style.borderLeftWidth = '4px';
-      placeholder.style.borderLeftColor = '#a7f3d0';
-      placeholder.innerHTML = `
-        <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">Report</div>
-        <div class="whitespace-pre-wrap leading-6 text-gray-500">Generating report…</div>`;
-      messagesEl.appendChild(placeholder);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-
-      inputEl.value = '';
       inputEl.disabled = true;
       sendBtn.disabled = true;
-
+      openLatestBtn.classList.add('hidden');
+      statusEl.textContent = 'Generating…';
+      resultTitle.textContent = 'Generating report…';
+      resultBody.textContent = 'Please wait while the agent analyzes your log.';
+      latestMeta.textContent = '';
       try {
         const res = await fetch('/api/query', {
           method: 'POST',
@@ -97,16 +838,37 @@
           body: JSON.stringify({ query: text, agent: 'log_analysis' })
         });
         const data = await res.json();
-        messagesEl.removeChild(placeholder);
         if (res.ok) {
-          const reportText = data.reply || 'Report generated.';
-          addReport(reportText);
+          resultTitle.textContent = 'Report ready';
+          if (renderMarkdownInto) {
+            renderMarkdownInto(resultBody, data.reply || 'Report generated.');
+          } else {
+            resultBody.textContent = data.reply || 'Report generated.';
+          }
+          latestMeta.textContent = data.trace_id ? `trace_id: ${data.trace_id}` : '';
+          statusEl.textContent = '';
+          await loadReports();
+          if (data.report_id) {
+            state.latestReportId = Number(data.report_id);
+            openLatestBtn.classList.remove('hidden');
+          }
         } else {
-          addReport(`[error] ${data.error || res.status}`);
+          resultTitle.textContent = 'Error';
+          if (renderPlainInto) {
+            renderPlainInto(resultBody, data.error || res.statusText || 'Failed to generate report.');
+          } else {
+            resultBody.textContent = data.error || res.statusText || 'Failed to generate report.';
+          }
+          statusEl.textContent = '';
         }
       } catch (e) {
-        messagesEl.removeChild(placeholder);
-        addReport('[network error]');
+        resultTitle.textContent = 'Network error';
+        if (renderPlainInto) {
+          renderPlainInto(resultBody, 'Could not reach the service. Please try again.');
+        } else {
+          resultBody.textContent = 'Could not reach the service. Please try again.';
+        }
+        statusEl.textContent = '';
       } finally {
         inputEl.disabled = false;
         sendBtn.disabled = false;
@@ -114,12 +876,24 @@
       }
     }
 
-    // Keyboard UX
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
     sendBtn.addEventListener('click', send);
-    newBtn.addEventListener('click', () => { messagesEl.innerHTML = ''; inputEl.focus(); });
+
+    openLatestBtn.addEventListener('click', () => {
+      if (state.latestReportId) navigate(`/report/${state.latestReportId}`);
+    });
+
+    async function router() {
+      const path = window.location.pathname;
+      setActiveRoute(path);
+      const rid = parseReportIdFromPath();
+      if (rid) await loadReport(rid);
+    }
+
+    loadReports();
+    router();
   </script>
 </body>
 </html>

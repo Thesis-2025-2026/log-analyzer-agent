@@ -28,6 +28,10 @@ def get_internal_knowledge_prompt() -> str:
         "- A summary of relevant historical logs found (there can be a situation when logs are not found in the database)\n"
         "- Similar past errors and their resolutions (if available)\n"
         "- Patterns or trends identified\n"
-        "- Recommendations based on historical data (provide no if no historial data found in the database)"
+        "- Recommendations based on historical data (provide no if no historial data found in the database)\n\n"
+        "Output formatting:\n"
+        "- Return your answer in GitHub-Flavored Markdown (GFM).\n"
+        "- Use short headings and bullet lists.\n"
+        "- Put SQL snippets, logs, or JSON in fenced code blocks.\n"
+        "- Do not include raw HTML. Do not wrap the entire response in a single code block."
     )
-
