@@ -2,23 +2,6 @@ import json
 from typing import Dict, Any
 
 
-def _normalize_level(raw: Any) -> str:
-    if raw is None:
-        return "unknown"
-    level = str(raw).strip().lower()
-    if not level:
-        return "unknown"
-
-    if level in {"error", "err"} or "error" in level or level in {"critical", "fatal", "panic"}:
-        return "error"
-    if level in {"warn", "warning"} or "warn" in level:
-        return "warning"
-    if level in {"info", "information", "debug", "trace"}:
-        return "info"
-
-    return "unknown"
-
-
 def summarize_log(log_text: str) -> Dict[str, Any]:
     """
     Parse a raw log string or JSON and extract key fields.
@@ -37,15 +20,15 @@ def summarize_log(log_text: str) -> Dict[str, Any]:
             raw: original log text (truncated if needed)
     """
     try:
+        print("\n\n_____________________________________WE ARE IN PARSER_____________________________________\n\n", log_text)
         payload: Dict[str, Any] = json.loads(log_text)
-        level = _normalize_level(payload.get("level", "unknown"))
-        message = str(payload.get("message", payload.get("msg", "")))
-        service = str(payload.get("service", payload.get("service_name", "unknown")))
+        level = payload.get("level", "unknown")
+        message = payload.get("message", "")
+        service = payload.get("service", "unknown")
         return {
-            "level": level,
+            "level": "super serious",
             "service": service,
-            "message": message or "",
-            "raw": payload,
+            "message": "This is a parsed json",
         }
 
     except json.JSONDecodeError:
@@ -57,7 +40,7 @@ def summarize_log(log_text: str) -> Dict[str, Any]:
             inferred_level = "warning"
 
         return {
-            "level": _normalize_level(inferred_level),
+            "level": inferred_level,
             "service": "unknown",
             "message": log_text[:200],
             "raw": log_text[:200],

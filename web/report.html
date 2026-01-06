@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Report Viewer</title>
+  <link href="/assets/styles.css" rel="stylesheet">
+</head>
+<body class="min-h-screen bg-gray-100 text-gray-900">
+  <div class="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-6 md:grid-cols-[220px_1fr]">
+    <!-- Sidebar navigation -->
+    <aside class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
+      <div class="border-b px-4 py-3">
+        <h2 class="text-sm font-semibold text-gray-700">Navigation</h2>
+      </div>
+      <nav class="p-2 text-sm">
+        <a href="/" class="block rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-50">Chat</a>
+        <a href="/reports" class="mt-1 block rounded-lg bg-gray-900 px-3 py-2 font-medium text-white">Reports</a>
+      </nav>
+    </aside>
+
+    <!-- Report detail -->
+    <main class="flex min-h-[85vh] flex-col rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
+      <div class="flex items-center justify-between border-b px-4 py-3">
+        <div class="flex items-center gap-3">
+          <a href="/reports" class="text-xs text-gray-600 hover:text-gray-900">← Back</a>
+          <h1 id="title" class="text-sm font-semibold text-gray-800">Report</h1>
+        </div>
+        <div id="meta" class="text-xs text-gray-500"></div>
+      </div>
+
+      <div class="flex-1 space-y-4 p-4">
+        <div id="badges" class="flex items-center gap-2"></div>
+
+        <section>
+          <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Content</h2>
+          <article id="content" class="whitespace-pre-wrap rounded-xl border bg-white p-4 leading-6"></article>
+        </section>
+
+        <section>
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Raw Log</h2>
+            <button id="toggleRaw" class="text-xs text-gray-600 hover:text-gray-900">Show</button>
+          </div>
+          <pre id="raw" class="hidden max-h-72 overflow-auto rounded-xl border bg-gray-50 p-3 text-[13px]"></pre>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function getReportId() {
+      const m = window.location.pathname.match(/\/report\/(\d+)/);
+      return m ? m[1] : null;
+    }
+
+    function levelBadge(level) {
+      const map = {
+        error: ['bg-red-100','text-red-700'],
+        warn: ['bg-yellow-100','text-yellow-700'],
+        warning: ['bg-yellow-100','text-yellow-700'],
+        info: ['bg-emerald-100','text-emerald-700'],
+        critical: ['bg-fuchsia-100','text-fuchsia-700'],
+      };
+      return map[(level||'').toLowerCase()] || ['bg-gray-100','text-gray-700'];
+    }
+
+    async function loadReport() {
+      const id = getReportId();
+      const titleEl = document.getElementById('title');
+      const metaEl = document.getElementById('meta');
+      const badgesEl = document.getElementById('badges');
+      const contentEl = document.getElementById('content');
+      const rawEl = document.getElementById('raw');
+      const toggleRaw = document.getElementById('toggleRaw');
+
+      if (!id) {
+        titleEl.textContent = 'Report not found';
+        contentEl.textContent = 'Missing report id in URL.';
+        return;
+      }
+      titleEl.textContent = `Report #${id}`;
+
+      try {
+        const res = await fetch(`/api/reports/${id}`);
+        const data = await res.json();
+        if (!res.ok) {
+          contentEl.textContent = data.error || 'Failed to load report.';
+          return;
+        }
+        const when = data.created_at ? new Date(data.created_at).toLocaleString() : '';
+        metaEl.textContent = when;
+        const [bg, fg] = levelBadge(data.level);
+        const badge = document.createElement('span');
+        badge.className = `rounded-full ${bg} px-2 py-0.5 text-[11px] font-medium ${fg}`;
+        badge.textContent = data.level || 'unknown';
+        const svc = document.createElement('span');
+        svc.className = 'text-xs text-gray-600';
+        svc.textContent = data.service ? `Service: ${data.service}` : 'Service: unknown';
+        badgesEl.appendChild(badge);
+        badgesEl.appendChild(svc);
+
+        contentEl.textContent = data.content || '';
+        rawEl.textContent = data.raw_log || '';
+
+        toggleRaw.addEventListener('click', () => {
+          const isHidden = rawEl.classList.contains('hidden');
+          if (isHidden) {
+            rawEl.classList.remove('hidden');
+            toggleRaw.textContent = 'Hide';
+          } else {
+            rawEl.classList.add('hidden');
+            toggleRaw.textContent = 'Show';
+          }
+        });
+      } catch (e) {
+        contentEl.textContent = 'Network error loading report.';
+      }
+    }
+
+    loadReport();
+  </script>
+</body>
+</html>
+

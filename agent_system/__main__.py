@@ -58,12 +58,11 @@ def analyze_log(agent_or_workforce, log_text: str) -> str:
 
     # Best-effort metadata extraction for storage using our local parser tool
     level = "unknown"
-    service = os.getenv("SERVICE_NAME", "unknown")
+    service = "unknown"
     try:
         parsed = summarize_log(log_text)
         level = str(parsed.get("level", level))
-        # Prefer configured service name (stable) if present.
-        service = os.getenv("SERVICE_NAME", str(parsed.get("service", service)))
+        service = str(parsed.get("service", service))
     except Exception:
         pass
 

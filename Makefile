@@ -120,27 +120,6 @@ build-ui:
 watch-ui:
 	@npx tailwindcss -i web/src/input.css -o web/assets/styles.css --watch
 
-## Fully rebuild distributed stack with no cached layers or persisted volumes
-# Usage: make rebuild-distributed-fresh [PRUNE_IMAGES=1]
-# - Stops and removes distributed containers + volumes
-# - Prunes builder cache (and images if PRUNE_IMAGES=1)
-# - Rebuilds images without cache (with --pull)
-# - Brings the stack back up with forced recreation
-rebuild-distributed-fresh:
-	@echo "🛑 Stopping distributed stack and wiping volumes…"
-	@$(DC) -f docker-compose.distributed.yml down -v --remove-orphans
-	@echo "🧹 Pruning builder cache…"
-	@$(DOCKER) builder prune -af
-	@if [ "$(PRUNE_IMAGES)" = "1" ]; then \
-		echo "🧹 Pruning unused images…"; \
-		$(DOCKER) image prune -af; \
-	fi
-	@echo "🔨 Rebuilding images (no cache, pull latest bases)…"
-	@$(DC) -f docker-compose.distributed.yml build --no-cache --pull
-	@echo "🚀 Starting distributed stack (force recreate)…"
-	@$(DC) -f docker-compose.distributed.yml up -d --force-recreate
-	@echo "✅ Distributed stack rebuilt fresh."
-
 down:
 	@$(DC) down || true
 

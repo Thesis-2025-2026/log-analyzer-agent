@@ -1,30 +1,10 @@
 import pytest
 
-from agent_api import app as app_module
 from agent_api.app import create_app
 
 
 @pytest.fixture
-def client(monkeypatch):
-    # Avoid real proxy/health monitor during tests
-    class _DummyProxy:
-        is_configured = False
-
-        def register(self, *a, **kw): return False
-        def unregister(self, *a, **kw): return None
-        def discover_services(self, *a, **kw): return []
-        def query_service(self, *a, **kw): return None
-
-    dummy_proxy = _DummyProxy()
-    monkeypatch.setattr(app_module, "proxy_client", dummy_proxy)
-    monkeypatch.setattr(app_module, "register_with_proxy", lambda max_retries=3: False)
-    monkeypatch.setattr(app_module.health_monitor, "start_threaded", lambda: None)
-    monkeypatch.setattr(app_module.health_monitor, "stop", lambda: None)
-    monkeypatch.setattr(app_module.atexit, "register", lambda *a, **kw: None)
-    # Stub analyzer and storage
-    monkeypatch.setattr(app_module, "analyze_log_with_main_agent", lambda *a, **kw: "mock reply")
-    monkeypatch.setattr(app_module, "insert_report", lambda *a, **kw: None)
-
+def client():
     app = create_app()
     app.config["TESTING"] = True
     return app.test_client()
