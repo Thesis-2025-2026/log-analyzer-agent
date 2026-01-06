@@ -18,7 +18,7 @@ This document describes how to deploy and use the distributed agent system with 
 │               ┌─────────────────┼─────────────────┐                   │
 │               │                 │                 │                   │
 │    ┌──────────▼──────────┐     │     ┌──────────▼──────────┐        │
-│    │   Service A Cluster │     │     │   Service B Cluster │        │
+│    │   Payment Service Cluster │     │     │   Order Service Cluster │        │
 │    │   (payment-service) │     │     │   (order-service)   │        │
 │    │     Port: 8001      │     │     │     Port: 8002      │        │
 │    ├─────────────────────┤     │     ├─────────────────────┤        │
@@ -80,10 +80,10 @@ docker-compose -f docker-compose.distributed.yml ps
 # Check proxy health
 curl http://localhost:8000/health
 
-# Check Service A health
+# Check Payment Service health
 curl http://localhost:8001/health
 
-# Check Service B health
+# Check Order Service health
 curl http://localhost:8002/health
 
 # List registered services
@@ -127,16 +127,16 @@ jupyter notebook test_distributed_system.ipynb
 ## Cross-Service Communication Flow
 
 ```
-1. Service A receives error log for analysis
-2. Service A's Main Agent analyzes locally
+1. Payment Service receives error log for analysis
+2. Payment Service's Main Agent analyzes locally
 3. Main Agent calls discover_services() → Proxy returns available services
 4. Main Agent identifies relevant services (e.g., order-service)
-5. Main Agent calls get_service_report("order-service", error_context)
+5. Main Agent calls get_service_report("order-service", query)
    → Proxy provides order-service URL
    → Direct request to order-service
    → order-service's Main Agent analyzes from its perspective
-   → Returns report to Service A
-6. Service A synthesizes all information:
+   → Returns report to Payment Service
+6. Payment Service synthesizes all information:
    - Local analysis
    - Internal knowledge (historical context)
    - Cross-service reports
@@ -145,26 +145,26 @@ jupyter notebook test_distributed_system.ipynb
 
 ## Configuration
 
-### Service A Configuration (`config/service-a.env`)
+### Payment Service Configuration (`config/service-payment.env`)
 
 ```env
 SERVICE_NAME=payment-service
-SERVICE_URL=http://service-a-api:8000
+SERVICE_URL=http://service-payment-api:8000
 SERVICE_CAPABILITIES=payment,billing,transaction,financial
 PROXY_URL=http://proxy:8000
-DATABASE_URL=postgresql://logs_user:logs_pass@service-a-postgres:5432/service_a_logs
-QDRANT_URL=http://service-a-qdrant:6333
+DATABASE_URL=postgresql://logs_user:logs_pass@service-payment-postgres:5432/service_a_logs
+QDRANT_URL=http://service-payment-qdrant:6333
 ```
 
-### Service B Configuration (`config/service-b.env`)
+### Order Service Configuration (`config/service-order.env`)
 
 ```env
 SERVICE_NAME=order-service
-SERVICE_URL=http://service-b-api:8000
+SERVICE_URL=http://service-order-api:8000
 SERVICE_CAPABILITIES=order,fulfillment,inventory,shipping
 PROXY_URL=http://proxy:8000
-DATABASE_URL=postgresql://logs_user:logs_pass@service-b-postgres:5432/service_b_logs
-QDRANT_URL=http://service-b-qdrant:6333
+DATABASE_URL=postgresql://logs_user:logs_pass@service-order-postgres:5432/service_b_logs
+QDRANT_URL=http://service-order-qdrant:6333
 ```
 
 ## Main Agent Tools
@@ -178,7 +178,6 @@ The Main Agent has access to these tools for comprehensive analysis:
 ### Cross-Service Tools
 - **discover_services**: Query proxy for available services
 - **get_service_report**: Get analysis from a specific service
-- **gather_cross_service_reports**: Collect reports from multiple services
 
 ## Adding New Services
 
@@ -251,7 +250,7 @@ docker-compose -f docker-compose.distributed.yml up -d
 To run multiple instances of the same service type:
 
 ```bash
-docker-compose -f docker-compose.distributed.yml up -d --scale service-a-api=3
+docker-compose -f docker-compose.distributed.yml up -d --scale service-payment-api=3
 ```
 
 ### Vertical Scaling (More Resources)
@@ -259,7 +258,7 @@ docker-compose -f docker-compose.distributed.yml up -d --scale service-a-api=3
 Modify resource limits in docker-compose.distributed.yml:
 
 ```yaml
-service-a-api:
+service-payment-api:
   deploy:
     resources:
       limits:
@@ -277,8 +276,8 @@ docker-compose -f docker-compose.distributed.yml logs -f
 
 # Specific service
 docker-compose -f docker-compose.distributed.yml logs -f proxy
-docker-compose -f docker-compose.distributed.yml logs -f service-a-api
-docker-compose -f docker-compose.distributed.yml logs -f service-b-api
+docker-compose -f docker-compose.distributed.yml logs -f service-payment-api
+docker-compose -f docker-compose.distributed.yml logs -f service-order-api
 ```
 
 ### Check Service Status
@@ -302,12 +301,12 @@ curl http://localhost:8000/health
 
 2. Check service logs:
 ```bash
-docker-compose -f docker-compose.distributed.yml logs service-a-api
+docker-compose -f docker-compose.distributed.yml logs service-payment-api
 ```
 
 3. Verify PROXY_URL in service config:
 ```bash
-docker exec service-a-api env | grep PROXY
+docker exec service-payment-api env | grep PROXY
 ```
 
 ### Cross-Service Communication Failing
@@ -319,7 +318,7 @@ curl http://localhost:8000/services
 
 2. Check network connectivity:
 ```bash
-docker exec service-a-api curl http://service-b-api:8000/health
+docker exec service-payment-api curl http://service-order-api:8000/health
 ```
 
 3. Check service health status:
@@ -336,7 +335,7 @@ docker-compose -f docker-compose.distributed.yml ps | grep postgres
 
 2. Verify connection from service:
 ```bash
-docker exec service-a-api python -c "
+docker exec service-payment-api python -c "
 from agent_api.config import service_config
 print(service_config.DATABASE_URL)
 "
@@ -386,8 +385,8 @@ log-analyzer-agent/
 │   └── tools/
 │       └── cross_service_tool.py  # Cross-service communication
 ├── config/
-│   ├── service-a.env       # Service A configuration
-│   ├── service-b.env       # Service B configuration
+│   ├── service-payment.env       # Payment Service configuration
+│   ├── service-order.env       # Order Service configuration
 │   └── proxy.env           # Proxy configuration
 ├── docker-compose.distributed.yml
 ├── Dockerfile
@@ -434,4 +433,3 @@ curl -X POST http://localhost:8001/api/query-service/order-service \
     "query": "Check for related order issues with payment timeout"
   }'
 ```
-

@@ -247,7 +247,13 @@ class ProxyClient:
         self,
         service_name: str,
         query: str,
-        timeout: int = 60
+        timeout: int = 60,
+        *,
+        trace_id: Optional[str] = None,
+        parent_event_id: Optional[int] = None,
+        visited_services: Optional[List[str]] = None,
+        persist_report: Optional[bool] = None,
+        response_mode: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Query another service's agent for analysis.
@@ -273,9 +279,21 @@ class ProxyClient:
         
         # Query the service directly
         try:
+            body: Dict[str, Any] = {"query": query}
+            if trace_id:
+                body["trace_id"] = trace_id
+            if parent_event_id is not None:
+                body["parent_event_id"] = parent_event_id
+            if visited_services is not None:
+                body["visited_services"] = visited_services
+            if persist_report is not None:
+                body["persist_report"] = persist_report
+            if response_mode:
+                body["response_mode"] = response_mode
+
             response = requests.post(
                 f"{service_url}/api/query",
-                json={"query": query},
+                json=body,
                 timeout=timeout
             )
             
@@ -292,4 +310,3 @@ class ProxyClient:
 
 # Global proxy client instance
 proxy_client = ProxyClient()
-

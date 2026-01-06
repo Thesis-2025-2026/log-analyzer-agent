@@ -97,7 +97,6 @@ tools = [
     # Cross-service (distributed)
     FunctionTool(discover_services),          # Find services via proxy
     FunctionTool(get_service_report),         # Query specific service
-    FunctionTool(gather_cross_service_reports), # Query multiple services
 ]
 ```
 
@@ -146,19 +145,18 @@ The Internal Knowledge Agent specializes in retrieving historical context and kn
 
 ```python
 tools = [
-    FunctionTool(query_logs),              # SQL database queries
-    FunctionTool(get_logs_by_error_pattern), # Pattern-based log search
+    FunctionTool(query_logs_sql),           # Read-only SQL queries
+    FunctionTool(query_logs_by_time_range), # Start/end timestamp window
     FunctionTool(search_fixes_for_error),   # RAG vector search
+    FunctionTool(search_reports_for_context), # Report RAG (advisory)
+    FunctionTool(get_current_time),         # Current UTC timestamp
 ]
 ```
 
-#### Query Types
+#### Query Strategy
 
-| Type | Description | Use Case |
-|------|-------------|----------|
-| `full` | Both SQL logs and RAG fixes | Default comprehensive search |
-| `logs_only` | Only historical SQL logs | When you need occurrence history |
-| `fixes_only` | Only RAG-based fixes | When you need known solutions |
+The Internal Knowledge Agent receives a free-form query from the Main Agent and
+decides which tools to use (SQL logs, time-range logs, RAG fixes, or report RAG).
 
 ---
 
@@ -203,19 +201,18 @@ def check_service_health(service_url: str, timeout: int = 5) -> Dict[str, Any]:
 Queries PostgreSQL for historical log data.
 
 ```python
-def query_logs(
-    level: Optional[str] = None,      # Filter: 'error', 'warning', 'info'
-    service: Optional[str] = None,    # Filter by service name
-    limit: int = 10,                  # Max results (1-100)
-    hours_back: Optional[int] = None  # Time range filter
-) -> List[Dict[str, Any]]:
-    """Query logs with optional filters."""
+def query_logs_sql(
+    sql: str,
+    limit: int = 100
+) -> Dict[str, Any]:
+    """Run a read-only SELECT/WITH query against logs."""
 
-def get_logs_by_error_pattern(
-    error_message: str,
-    limit: int = 10
-) -> List[Dict[str, Any]]:
-    """Search logs containing similar error messages."""
+def query_logs_by_time_range(
+    start_ts: str,
+    end_ts: str,
+    limit: int = 100
+) -> Dict[str, Any]:
+    """Return up to 100 logs between start/end timestamps."""
 ```
 
 **Database Schema**:
@@ -278,11 +275,10 @@ Bridges the Main Agent to the Internal Knowledge Agent.
 
 ```python
 def query_internal_knowledge(
-    log_data: str,
-    query_type: str = "full"  # "full" | "logs_only" | "fixes_only"
+    query: str
 ) -> str:
     """
-    Query the Internal Knowledge Agent for historical context.
+    Query the Internal Knowledge Agent for specific internal knowledge needs.
     
     Internally creates an Internal Knowledge Agent instance and
     executes the query, returning synthesized results.
@@ -318,14 +314,14 @@ def discover_services(capability: Optional[str] = None) -> str:
 #### 2. Get Service Report
 
 ```python
-def get_service_report(service_name: str, error_context: str) -> str:
+def get_service_report(service_name: str, query: str) -> str:
     """
     Get analysis from a specific service's agent.
     
     Process:
     1. Look up service URL from proxy
     2. Verify service is healthy
-    3. POST error context to service's /api/query endpoint
+    3. POST query to service's /api/query endpoint
     4. Return formatted report
     
     Returns:
@@ -334,34 +330,6 @@ def get_service_report(service_name: str, error_context: str) -> str:
          Capabilities: order, fulfillment
          ----------------------------------------
          Analysis: Found 5 orders stuck in PENDING_PAYMENT..."
-    """
-```
-
----
-
-#### 3. Gather Cross-Service Reports
-
-```python
-def gather_cross_service_reports(
-    error_context: str,
-    service_names: Optional[str] = None  # Comma-separated or None for all
-) -> str:
-    """
-    Query multiple services in parallel for comprehensive analysis.
-    
-    Returns aggregated report:
-        "============================================================
-         CROSS-SERVICE ANALYSIS REPORT
-         ============================================================
-         Services queried: 3
-         Successful responses: 2
-         Failed queries: 1
-         
-         [SUCCESSFUL SERVICE REPORTS]
-         ...
-         
-         [SERVICES WITH ERRORS]
-         - inventory-service: Connection timeout..."
     """
 ```
 
@@ -468,7 +436,7 @@ User Request (complex multi-service error)
    │
    ├──► query_internal_knowledge()
    │    └──► Internal Knowledge Agent
-   │         ├──► query_logs() → PostgreSQL
+   │         ├──► query_logs_sql() → PostgreSQL
    │         └──► search_fixes_for_error() → Qdrant
    │
    ├──► check_service_health()
@@ -476,7 +444,7 @@ User Request (complex multi-service error)
    │
    └──► discover_services()
         └──► GET /discover → Proxy
-             └──► get_service_report() / gather_cross_service_reports()
+             └──► get_service_report()
                   └──► POST /api/query → Remote Service Agents
    │
 5. Main Agent synthesizes all information
@@ -522,7 +490,7 @@ EMBEDDING_DIM=1536
 
 # Cross-Service Configuration
 PROXY_URL=http://localhost:8000
-CROSS_SERVICE_TIMEOUT=60
+CROSS_SERVICE_TIMEOUT=240
 ```
 
 ### Model Factory
@@ -675,4 +643,3 @@ logger.setLevel(logging.DEBUG)
 - [Qdrant Vector Database](https://qdrant.tech/documentation/)
 - [OpenAI Embeddings](https://platform.openai.com/docs/guides/embeddings)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
-

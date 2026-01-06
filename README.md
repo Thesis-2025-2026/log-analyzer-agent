@@ -78,7 +78,7 @@ The distributed architecture deploys isolated agent clusters per service, with a
 
 ```
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│   Service A     │  │   Service B     │  │   Service C     │
+│ Payment Service │  │  Order Service  │  │   Service C     │
 │  Agent Cluster  │  │  Agent Cluster  │  │  Agent Cluster  │
 └────────┬────────┘  └────────┬────────┘  └────────┬────────┘
          │                    │                    │
@@ -107,12 +107,21 @@ This starts:
 | Service | Port | Description |
 |---------|------|-------------|
 | Proxy | 8000 | Service discovery & registry |
-| Service A API | 8001 | Payment service agent |
-| Service A Postgres | 5433 | Payment logs database |
-| Service A Qdrant | 6333 | Payment knowledge base |
-| Service B API | 8002 | Order service agent |
-| Service B Postgres | 5434 | Order logs database |
-| Service B Qdrant | 6334 | Order knowledge base |
+| Payment API | 8001 | Payment service agent |
+| Payment Postgres | 5433 | Payment logs database |
+| Payment Qdrant | 6333 | Payment knowledge base |
+| Order API | 8002 | Order service agent |
+| Order Postgres | 5434 | Order logs database |
+| Order Qdrant | 6334 | Order knowledge base |
+| Auth API | 8003 | Auth service agent |
+| Auth Postgres | 5435 | Auth logs database |
+| Auth Qdrant | 6335 | Auth knowledge base |
+| Deployments API | 8004 | Deployments service agent |
+| Deployments Postgres | 5436 | Deployments logs database |
+| Deployments Qdrant | 6336 | Deployments knowledge base |
+| IdP API | 8005 | IdP service agent |
+| IdP Postgres | 5437 | IdP logs database |
+| IdP Qdrant | 6337 | IdP knowledge base |
 
 ### 2. Verify Services
 
@@ -138,15 +147,15 @@ PostgreSQL seeds are automatically loaded on container start. To seed Qdrant vec
 
 # Option 2: Manual Qdrant seeding
 python infra/seed_qdrant.py \
-  --service-a-url http://localhost:6333 \
-  --service-b-url http://localhost:6334 \
+  --payment-url http://localhost:6333 \
+  --order-url http://localhost:6334 \
   --collection log_fixes
 ```
 
 **Seeded Data:**
 
-| Database | Service A (payment) | Service B (order) |
-|----------|---------------------|-------------------|
+| Database | Payment | Order |
+|----------|---------|-------|
 | PostgreSQL | 10 payment logs, 2 reports | 11 order logs, 2 reports |
 | Qdrant | 5 error-fix pairs | 5 error-fix pairs |
 
@@ -230,7 +239,7 @@ docker-compose -f docker-compose.distributed.yml down -v
 ## Troubleshooting
 
 ### Services not registering with proxy
-Check logs: `docker-compose -f docker-compose.distributed.yml logs service-a-api`
+Check logs: `docker-compose -f docker-compose.distributed.yml logs service-payment-api`
 
 ### Qdrant collection not found
 Run the seed script: `./infra/seed_all.sh`

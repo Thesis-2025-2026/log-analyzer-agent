@@ -10,6 +10,7 @@ REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 
 LOGS_CHANNEL = os.getenv("LOGS_CHANNEL", "logs")
 ANOM_CHANNEL = os.getenv("ANOM_CHANNEL", "anomalies")
+ANOM_QUEUE_KEY = os.getenv("ANOM_QUEUE_KEY") or f"{ANOM_CHANNEL}:queue"
 
 def main() -> None:
     r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
@@ -38,9 +39,11 @@ def main() -> None:
         # print(f"[detector] received log: {data_str}")
 
         if run_filters(log):
+            payload = json.dumps(log)
             try:
                 print(f"Publishing: ", log)
-                r.publish(ANOM_CHANNEL, json.dumps(log))
+                r.rpush(ANOM_QUEUE_KEY, payload)
+                r.publish(ANOM_CHANNEL, payload)
             except Exception:
                 pass
 

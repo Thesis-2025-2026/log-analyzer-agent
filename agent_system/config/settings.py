@@ -38,10 +38,10 @@ def configure_logging():
 configure_logging()
 
 # OpenAI model configuration
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-5-mini-2025-08-07")
 MODEL_PLATFORM = os.getenv("MODEL_PLATFORM", "OPENAI")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY is required in .env file")
-TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
+TEMPERATURE = float(os.getenv("TEMPERATURE", "1"))
