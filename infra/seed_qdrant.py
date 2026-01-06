@@ -2,11 +2,15 @@
 """
 Seed Qdrant vector databases with error-fix pairs for distributed demo.
 
-This script populates both service-a-qdrant and service-b-qdrant with
+This script populates both payment and order Qdrant instances with
 service-specific knowledge for demonstrating cross-service analysis.
 
 Usage:
-    python infra/seed_qdrant.py [--service-a-url URL] [--service-b-url URL]
+    python infra/seed_qdrant.py [--payment-url URL] [--order-url URL] [--auth-url URL]
+                               [--deployments-url URL] [--idp-url URL]
+                               [--collection NAME] [--payment-collection NAME]
+                               [--order-collection NAME] [--auth-collection NAME]
+                               [--deployments-collection NAME] [--idp-collection NAME]
 """
 
 import os
@@ -329,6 +333,104 @@ Prevention: Query optimization, database monitoring, read replicas.""",
     }
 ]
 
+# Auth Service Error-Fix Knowledge Base
+AUTH_SERVICE_FIXES = [
+    {
+        "error": "authentication rejected (oauth_token_exchange_failed)",
+        "fix": """Immediate checks:
+1. Confirm latest auth release status in deployments-service
+2. Verify oauth callback payload schema against expected version
+3. Inspect auth-service logs for callback parsing errors
+
+Likely cause: OAuth callback schema mismatch after release.
+Recommended action: Roll back auth release or hotfix the callback parser.
+Cross-service: Ask deployments-service for release/rollback timeline.""",
+        "severity": "HIGH",
+        "service": "auth-service"
+    },
+    {
+        "error": "authentication rejected (idp_unreachable)",
+        "fix": """Immediate checks:
+1. Verify idp-service health checks (provider degraded, error_rate spikes)
+2. Retry token exchange with exponential backoff
+3. Offer fallback auth method (password or magic link) if available
+
+Likely cause: Identity provider outage or network timeout.
+Cross-service: Ask idp-service for provider failure mode and error rate.""",
+        "severity": "HIGH",
+        "service": "auth-service"
+    },
+    {
+        "error": "token signing key missing (signing_key_missing)",
+        "fix": """Immediate checks:
+1. Confirm the signing key exists in KMS and matches key_id
+2. Reload the key cache on auth-service nodes
+3. Verify key rotation job did not disable the active key
+
+Recommended action: Restore or rotate signing keys in KMS, then refresh JWKS cache.
+Likely cause: Key rotation drift or missing KMS alias.
+Prevention: Add key rotation canaries and alert on missing key_ids.""",
+        "severity": "HIGH",
+        "service": "auth-service"
+    }
+]
+
+# IDP Service Error-Fix Knowledge Base
+IDP_SERVICE_FIXES = [
+    {
+        "error": "provider degraded (token_endpoint_timeout)",
+        "fix": """Immediate checks:
+1. Confirm provider status page / SLA incident
+2. Increase token exchange timeout and enable retry with jitter
+3. Route traffic to alternate provider if configured
+
+Likely cause: Provider latency spike.
+Cross-service: Alert auth-service to expect elevated oauth failures.""",
+        "severity": "MEDIUM",
+        "service": "idp-service"
+    },
+    {
+        "error": "provider degraded (tls_handshake)",
+        "fix": """Immediate checks:
+1. Validate outbound TLS cert chain and trust store
+2. Check recent cert rotations on provider
+3. Verify system clock skew on idp-service nodes
+
+Likely cause: TLS handshake failure after cert rotation.
+Cross-service: Notify auth-service to degrade oauth flows temporarily.""",
+        "severity": "HIGH",
+        "service": "idp-service"
+    }
+]
+
+# Deployments Service Error-Fix Knowledge Base
+DEPLOYMENTS_SERVICE_FIXES = [
+    {
+        "error": "oauth callback schema changed",
+        "fix": """Immediate checks:
+1. Compare callback payload schema between blue/green slots
+2. Run auth-service contract tests against callback payload
+3. Freeze further rollout until schema mismatch resolved
+
+Likely cause: Backward-incompatible oauth callback change.
+Cross-service: Coordinate with auth-service to validate parser changes.""",
+        "severity": "MEDIUM",
+        "service": "deployments-service"
+    },
+    {
+        "error": "rollback triggered due to oauth callback failures",
+        "fix": """Immediate checks:
+1. Confirm rollback completed and traffic is stable
+2. Diff auth release versions to isolate breaking change
+3. Create hotfix or re-release with compatibility guardrails
+
+Likely cause: Release regression in oauth callback handling.
+Cross-service: Ask auth-service for rejected login spikes and error codes.""",
+        "severity": "HIGH",
+        "service": "deployments-service"
+    }
+]
+
 
 def get_embedding(client: OpenAI, text: str) -> List[float]:
     """Generate embedding using OpenAI text-embedding-3-small."""
@@ -412,13 +514,33 @@ def seed_qdrant(
 
 def main():
     parser = argparse.ArgumentParser(description="Seed Qdrant databases for distributed demo")
-    parser.add_argument("--service-a-url", default="http://localhost:6333", 
-                        help="Qdrant URL for Service A")
-    parser.add_argument("--service-b-url", default="http://localhost:6334",
-                        help="Qdrant URL for Service B")
-    parser.add_argument("--collection", default="log_fixes",
-                        help="Collection name")
+    parser.add_argument("--payment-url", default=None, help="Qdrant URL for Payment Service")
+    parser.add_argument("--order-url", default=None, help="Qdrant URL for Order Service")
+    parser.add_argument("--auth-url", default=None, help="Qdrant URL for Auth Service")
+    parser.add_argument("--deployments-url", default=None, help="Qdrant URL for Deployments Service")
+    parser.add_argument("--idp-url", default=None, help="Qdrant URL for IDP Service")
+    parser.add_argument("--service-a-url", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--service-b-url", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--collection", default=None,
+                        help="Fallback collection name (applies to all services)")
+    parser.add_argument("--payment-collection", default=None, help="Collection name for Payment Service")
+    parser.add_argument("--order-collection", default=None, help="Collection name for Order Service")
+    parser.add_argument("--auth-collection", default=None, help="Collection name for Auth Service")
+    parser.add_argument("--deployments-collection", default=None, help="Collection name for Deployments Service")
+    parser.add_argument("--idp-collection", default=None, help="Collection name for IDP Service")
     args = parser.parse_args()
+
+    payment_url = args.payment_url or args.service_a_url or "http://localhost:6333"
+    order_url = args.order_url or args.service_b_url or "http://localhost:6334"
+    auth_url = args.auth_url or "http://localhost:6335"
+    deployments_url = args.deployments_url or "http://localhost:6336"
+    idp_url = args.idp_url or "http://localhost:6337"
+    fallback_collection = args.collection
+    payment_collection = args.payment_collection or fallback_collection or "payment_log_fixes"
+    order_collection = args.order_collection or fallback_collection or "order_log_fixes"
+    auth_collection = args.auth_collection or fallback_collection or "auth_log_fixes"
+    deployments_collection = args.deployments_collection or fallback_collection or "deployments_log_fixes"
+    idp_collection = args.idp_collection or fallback_collection or "idp_log_fixes"
     
     # Check for API key
     api_key = os.getenv("OPENAI_API_KEY")
@@ -433,29 +555,65 @@ def main():
     print("Qdrant Seed Script for Distributed Demo")
     print("=" * 60)
     
-    # Seed Service A (Payment Service)
-    print("\n[Service A - Payment Service]")
+    # Seed Payment Service
+    print("\n[Payment Service]")
     try:
         seed_qdrant(
-            qdrant_url=args.service_a_url,
-            collection_name=args.collection,
+            qdrant_url=payment_url,
+            collection_name=payment_collection,
             fixes=PAYMENT_SERVICE_FIXES,
             openai_client=openai_client
         )
     except Exception as e:
-        print(f"Failed to seed Service A: {e}")
+        print(f"Failed to seed Payment Service: {e}")
     
-    # Seed Service B (Order Service)
-    print("\n[Service B - Order Service]")
+    # Seed Order Service
+    print("\n[Order Service]")
     try:
         seed_qdrant(
-            qdrant_url=args.service_b_url,
-            collection_name=args.collection,
+            qdrant_url=order_url,
+            collection_name=order_collection,
             fixes=ORDER_SERVICE_FIXES,
             openai_client=openai_client
         )
     except Exception as e:
-        print(f"Failed to seed Service B: {e}")
+        print(f"Failed to seed Order Service: {e}")
+
+    # Seed Auth Service
+    print("\n[Auth Service]")
+    try:
+        seed_qdrant(
+            qdrant_url=auth_url,
+            collection_name=auth_collection,
+            fixes=AUTH_SERVICE_FIXES,
+            openai_client=openai_client
+        )
+    except Exception as e:
+        print(f"Failed to seed Auth Service: {e}")
+
+    # Seed Deployments Service
+    print("\n[Deployments Service]")
+    try:
+        seed_qdrant(
+            qdrant_url=deployments_url,
+            collection_name=deployments_collection,
+            fixes=DEPLOYMENTS_SERVICE_FIXES,
+            openai_client=openai_client
+        )
+    except Exception as e:
+        print(f"Failed to seed Deployments Service: {e}")
+
+    # Seed IDP Service
+    print("\n[IDP Service]")
+    try:
+        seed_qdrant(
+            qdrant_url=idp_url,
+            collection_name=idp_collection,
+            fixes=IDP_SERVICE_FIXES,
+            openai_client=openai_client
+        )
+    except Exception as e:
+        print(f"Failed to seed IDP Service: {e}")
     
     print("\n" + "=" * 60)
     print("Seeding complete!")
@@ -464,4 +622,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

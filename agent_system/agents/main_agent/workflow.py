@@ -18,26 +18,26 @@ RATE_LIMIT_BASE_SLEEP_SECONDS = float(os.getenv("AGENT_RATE_LIMIT_BASE_SLEEP_SEC
 RATE_LIMIT_MAX_SLEEP_SECONDS = float(os.getenv("AGENT_RATE_LIMIT_MAX_SLEEP_SECONDS", "30"))
 
 
-def make_main_agent():
+def make_main_agent(response_mode: str = "user"):
     """Factory wrapper to allow monkeypatching in tests."""
     from agent_system.agents.main_agent import make_main_agent as factory
-    return factory()
+    return factory(response_mode=response_mode)
 
 
 def analyze_log_with_main_agent(
     log_data: str,
     max_retries: int = 3,
     visited_services: Optional[List[str]] = None,
+    response_mode: str = "user",
 ) -> str:
     """
     Analyze a log using the Main Agent.
     
     The Main Agent handles the entire workflow:
-    - Parsing and understanding the log
+    - Parsing and understanding the request
     - Determining if internal knowledge is needed
     - Checking service health when necessary
-    - Assessing error severity and impact
-    - Generating final recommendations
+    - Generating concise findings and recommendations
     
     Args:
         log_data: The log data to analyze (can be JSON string or raw log text)
@@ -55,18 +55,12 @@ def analyze_log_with_main_agent(
         visited.append(CURRENT_SERVICE_NAME)
     set_visited_services(visited)
     
-    # Construct the analysis prompt
-    prompt = (
-        f"Analyze the following log entry and provide a comprehensive assessment. "
-        f"Query internal knowledge if you need historical context or similar past errors. "
-        f"Check service health if the error suggests a service failure. "
-        f"Provide severity assessment, impact analysis, and actionable recommendations.\n\n"
-        f"Log data:\n{log_data}"
-    )
+    # Pass the raw request to the agent; the system prompt defines behavior.
+    prompt = log_data
     
     # Create the Main Agent
     logger.info("Creating Main Agent...")
-    main_agent = make_main_agent()
+    main_agent = make_main_agent(response_mode=response_mode)
     
     # Execute with retry logic
     last_error = None

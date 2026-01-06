@@ -1,10 +1,20 @@
 """
-DB Tool for querying the SQL database to retrieve additional logs and context.
+DB Tools for querying logs with read-only SQL access.
 """
+from __future__ import annotations
+
 import os
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List
+
 import psycopg2
 import psycopg2.extras
+
+_READONLY_PATTERN = re.compile(r"^\s*(with|select)\b", re.IGNORECASE)
+_FORBIDDEN_PATTERN = re.compile(
+    r"\b(insert|update|delete|drop|alter|create|truncate|grant|revoke)\b",
+    re.IGNORECASE,
+)
 
 
 def _get_db_params() -> Dict[str, Any]:
@@ -18,106 +28,113 @@ def _get_db_params() -> Dict[str, Any]:
     }
 
 
-def query_logs(
-    level: Optional[str] = None,
-    service: Optional[str] = None,
-    limit: int = 10,
-    hours_back: Optional[int] = None
-) -> List[Dict[str, Any]]:
+def query_logs_sql(sql: str, limit: int = 100) -> Dict[str, Any]:
     """
-    Query logs from the database with optional filters.
-    
-    Use this tool to retrieve historical logs that match specific criteria.
-    This helps provide context for error analysis by finding similar past occurrences.
-    
-    Args:
-        level: Filter by log level (e.g., 'error', 'warning', 'info')
-        service: Filter by service name
-        limit: Maximum number of logs to return (default: 10, max: 100)
-        hours_back: Only return logs from the last N hours (optional)
-    
-    Returns:
-        A list of dictionaries containing log entries with fields:
-        - id: log entry ID
-        - timestamp: when the log was created
-        - level: log level
-        - raw: the raw log data (JSON)
+    Execute a read-only SELECT query against the logs database.
+
+    This tool accepts a SELECT/WITH query and returns up to `limit` rows.
+    It rejects any non-SELECT statements and disallows multiple statements.
     """
+    if not isinstance(sql, str) or not sql.strip():
+        return {"error": "SQL query must be a non-empty string."}
+
+    cleaned = sql.strip().rstrip(";")
+    if ";" in cleaned:
+        return {"error": "Only a single SELECT statement is allowed."}
+    if not _READONLY_PATTERN.match(cleaned):
+        return {"error": "Only SELECT/WITH queries are allowed."}
+    if _FORBIDDEN_PATTERN.search(cleaned):
+        return {"error": "Write operations are not allowed in this tool."}
+
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 100
+    limit = min(max(1, limit), 100)
+    wrapped = f"SELECT * FROM ({cleaned}) AS q LIMIT {limit}"
+
+    try:
+        with psycopg2.connect(**_get_db_params()) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(wrapped)
+                rows = cur.fetchall()
+                return {
+                    "items": [dict(row) for row in rows],
+                    "limit": limit,
+                    "returned": len(rows),
+                }
+    except Exception as e:
+        return {"error": f"Database query failed: {str(e)}"}
+
+
+def query_logs_by_time_range(start_ts: str, end_ts: str, limit: int = 100) -> Dict[str, Any]:
+    """
+    Fetch logs between start_ts and end_ts (inclusive), ordered from earliest to latest.
+
+    Returns up to `limit` logs starting from start_ts. If more logs exist, a note
+    is included indicating additional logs between the last returned log and end_ts.
+    """
+    if not isinstance(start_ts, str) or not start_ts.strip():
+        return {"error": "start_ts must be a non-empty timestamp string."}
+    if not isinstance(end_ts, str) or not end_ts.strip():
+        return {"error": "end_ts must be a non-empty timestamp string."}
+
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 100
+    limit = min(max(1, limit), 100)
     params = _get_db_params()
-    limit = min(max(1, limit), 100)  # Clamp between 1 and 100
-    
-    conditions = []
-    values = []
-    
-    if level:
-        conditions.append("level = %s")
-        values.append(level)
-    
-    if service:
-        # Service might be in the raw JSONB field
-        conditions.append("(raw->>'service' = %s OR raw->>'service_name' = %s)")
-        values.extend([service, service])
-    
-    if hours_back:
-        # Use make_interval() function for proper parameterization
-        # This avoids SQL injection and handles the interval correctly
-        conditions.append("timestamp >= NOW() - make_interval(hours => %s)")
-        values.append(hours_back)
-    
-    where_clause = " AND ".join(conditions) if conditions else "1=1"
-    
-    query = f"""
-        SELECT id, timestamp, level, raw
-        FROM logs
-        WHERE {where_clause}
-        ORDER BY timestamp DESC
-        LIMIT %s
-    """
-    values.append(limit)
-    
+
     try:
         with psycopg2.connect(**params) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query, values)
+                cur.execute(
+                    """
+                    SELECT id, timestamp, level, raw
+                    FROM logs
+                    WHERE timestamp >= %s AND timestamp <= %s
+                    ORDER BY timestamp ASC
+                    LIMIT %s
+                    """,
+                    (start_ts, end_ts, limit),
+                )
                 rows = cur.fetchall()
-                return [dict(row) for row in rows]
+
+                cur.execute(
+                    """
+                    SELECT COUNT(*) AS total
+                    FROM logs
+                    WHERE timestamp >= %s AND timestamp <= %s
+                    """,
+                    (start_ts, end_ts),
+                )
+                count_row = cur.fetchone() or {}
+                total_val = count_row.get("total", 0)
+                total = int(total_val) if total_val is not None else 0
+
+        note = None
+        if total > limit:
+            last_ts = rows[-1]["timestamp"] if rows else None
+            if last_ts:
+                note = (
+                    f"More than {limit} logs between {start_ts} and {end_ts}. "
+                    f"Returned the first {limit} from the start; "
+                    f"{total - limit} more logs exist between {last_ts} and {end_ts}."
+                )
+            else:
+                note = (
+                    f"More than {limit} logs between {start_ts} and {end_ts}. "
+                    f"Returned the first {limit} from the start."
+                )
+
+        return {
+            "items": [dict(row) for row in rows],
+            "start_ts": start_ts,
+            "end_ts": end_ts,
+            "returned": len(rows),
+            "total": total,
+            "note": note,
+        }
     except Exception as e:
-        return [{"error": f"Database query failed: {str(e)}"}]
-
-
-def get_logs_by_error_pattern(error_message: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """
-    Search for logs containing similar error messages or patterns.
-    
-    This tool performs a text search in log messages to find related errors.
-    Useful for finding historical occurrences of similar issues.
-    
-    Args:
-        error_message: The error message or pattern to search for
-        limit: Maximum number of logs to return (default: 10, max: 50)
-    
-    Returns:
-        A list of dictionaries containing matching log entries
-    """
-    params = _get_db_params()
-    limit = min(max(1, limit), 50)
-    
-    query = """
-        SELECT id, timestamp, level, raw
-        FROM logs
-        WHERE raw::text ILIKE %s
-           OR (raw->>'message')::text ILIKE %s
-        ORDER BY timestamp DESC
-        LIMIT %s
-    """
-    pattern = f"%{error_message}%"
-    
-    try:
-        with psycopg2.connect(**params) as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query, [pattern, pattern, limit])
-                rows = cur.fetchall()
-                return [dict(row) for row in rows]
-    except Exception as e:
-        return [{"error": f"Database search failed: {str(e)}"}]
-
+        return {"error": f"Database query failed: {str(e)}"}

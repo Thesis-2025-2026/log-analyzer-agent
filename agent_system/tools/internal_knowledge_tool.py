@@ -19,7 +19,7 @@ RATE_LIMIT_BASE_SLEEP_SECONDS = float(os.getenv("INTERNAL_KNOWLEDGE_RATE_LIMIT_B
 RATE_LIMIT_MAX_SLEEP_SECONDS = float(os.getenv("INTERNAL_KNOWLEDGE_RATE_LIMIT_MAX_SLEEP_SECONDS", "30"))
 
 
-def query_internal_knowledge(log_data: str, query_type: str = "full") -> str:
+def query_internal_knowledge(query: str) -> str:
     """
     Query the Internal Knowledge Agent for historical context and similar past errors.
     
@@ -29,11 +29,9 @@ def query_internal_knowledge(log_data: str, query_type: str = "full") -> str:
     - Patterns and trends in log data
     
     Args:
-        log_data: The log data to analyze (error message, stack trace, etc.)
-        query_type: Type of query to perform:
-            - "full": Get both historical logs and RAG-based fixes (default)
-            - "logs_only": Only query historical logs from SQL database
-            - "fixes_only": Only query RAG for similar errors and fixes
+        query: The Main Agent's request describing what internal knowledge is needed
+               (e.g., what data exists in the knowledge base, similar past errors,
+               recommended fixes, time-range context, etc.)
     
     Returns:
         A string containing the Internal Knowledge Agent's response with:
@@ -45,28 +43,16 @@ def query_internal_knowledge(log_data: str, query_type: str = "full") -> str:
     # Import here to avoid circular dependencies
     from agent_system.agents.internal_knowledge import make_internal_knowledge_agent
 
-    logger.info(f"Querying Internal Knowledge Agent (query_type: {query_type})")
+    if not isinstance(query, str) or not query.strip():
+        return "Error querying internal knowledge: query must be a non-empty string."
 
-    # Construct the prompt based on query type
-    if query_type == "logs_only":
-        prompt = (
-            f"Retrieve historical logs from the SQL database that match this error pattern. "
-            f"Focus only on past occurrences and trends.\n\n"
-            f"Log data:\n{log_data}"
-        )
-    elif query_type == "fixes_only":
-        prompt = (
-            f"Search the vector database (RAG) for similar past errors and their fixes. "
-            f"Focus on known solutions and resolutions.\n\n"
-            f"Log data:\n{log_data}"
-        )
-    else:  # full
-        prompt = (
-            f"Retrieve historical logs and similar past errors related to this log entry. "
-            f"Search the knowledge base for similar past errors and fixes using RAG. "
-            f"Provide a comprehensive summary of relevant historical context and any known fixes.\n\n"
-            f"Log data:\n{log_data}"
-        )
+    logger.info("Querying Internal Knowledge Agent")
+
+    prompt = (
+        "You are receiving a request from the Main Agent about what internal knowledge is needed. "
+        "Decide which tools to use to answer it (SQL logs, time-range logs, RAG fixes, report RAG).\n\n"
+        f"Main Agent query:\n{query}"
+    )
 
     last_error: Optional[str] = None
     for attempt in range(1, max(1, MAX_RETRIES) + 1):

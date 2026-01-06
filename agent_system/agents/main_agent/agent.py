@@ -13,30 +13,27 @@ from agent_system.tools.internal_knowledge_tool import query_internal_knowledge
 from agent_system.tools.cross_service_tool import (
     discover_services,
     get_service_report,
-    gather_cross_service_reports,
 )
 
 
-def make_main_agent() -> ChatAgent:
+def make_main_agent(response_mode: str = "user") -> ChatAgent:
     """
     Create a Main Agent with orchestration, reasoning, and health check capabilities.
     
     The Main Agent is responsible for:
     - Receiving and parsing log analysis requests
     - Orchestrating the analysis workflow
-    - Analyzing error severity and impact
-    - Checking service health
+    - Checking service health when needed
     - Querying internal knowledge when needed
     - Discovering other services via the proxy
-    - Gathering reports from other services for cross-service context
-    - Synthesizing information from multiple sources
-    - Generating final analysis reports with recommendations
+    - Querying other services for cross-service context
+    - Synthesizing information into concise reports and recommendations
     
     Returns:
         A configured ChatAgent instance with all necessary tools
     """
     model = create_model(tool_choice="auto")
-    system_prompt = get_main_agent_prompt()
+    system_prompt = get_main_agent_prompt(response_mode=response_mode)
 
     trace_id = get_trace_id()
     parent_event_id = get_parent_event_id()
@@ -75,15 +72,6 @@ def make_main_agent() -> ChatAgent:
         FunctionTool(
             trace_tool_bound(
                 get_service_report,
-                trace_id=trace_id,
-                parent_event_id=parent_event_id,
-                service_name=service_name,
-                agent_name="Main Agent",
-            )
-        ),
-        FunctionTool(
-            trace_tool_bound(
-                gather_cross_service_reports,
                 trace_id=trace_id,
                 parent_event_id=parent_event_id,
                 service_name=service_name,

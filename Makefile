@@ -139,6 +139,8 @@ rebuild-distributed-fresh:
 	@$(DC) -f docker-compose.distributed.yml build --no-cache --pull
 	@echo "🚀 Starting distributed stack (force recreate)…"
 	@$(DC) -f docker-compose.distributed.yml up -d --force-recreate
+	@echo "🌱 Seeding Qdrant knowledge bases…"
+	@./infra/seed_all.sh
 	@echo "✅ Distributed stack rebuilt fresh."
 
 down:

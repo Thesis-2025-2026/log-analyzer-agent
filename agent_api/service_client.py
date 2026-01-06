@@ -253,6 +253,7 @@ class ProxyClient:
         parent_event_id: Optional[int] = None,
         visited_services: Optional[List[str]] = None,
         persist_report: Optional[bool] = None,
+        response_mode: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Query another service's agent for analysis.
@@ -287,6 +288,8 @@ class ProxyClient:
                 body["visited_services"] = visited_services
             if persist_report is not None:
                 body["persist_report"] = persist_report
+            if response_mode:
+                body["response_mode"] = response_mode
 
             response = requests.post(
                 f"{service_url}/api/query",

@@ -72,6 +72,23 @@ def get_report(report_id: int) -> Optional[Dict[str, Any]]:
             return dict(row) if row else None
 
 
+def delete_report(report_id: int) -> bool:
+    params = _db_params()
+    with psycopg2.connect(**params) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM reports WHERE id = %s", (report_id,))
+            return cur.rowcount > 0
+
+
+def count_reports() -> int:
+    params = _db_params()
+    with psycopg2.connect(**params) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM reports")
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
+
+
 def insert_log(level: Optional[str], raw: Dict[str, Any]) -> Dict[str, Any]:
     params = _db_params()
     with psycopg2.connect(**params) as conn:

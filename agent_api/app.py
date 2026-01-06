@@ -5,7 +5,7 @@ import logging
 import atexit
 
 from agent_system.agents.main_agent import analyze_log_with_main_agent
-from agent_system.core.storage import list_reports, get_report, insert_report
+from agent_system.core.storage import list_reports, get_report, insert_report, count_reports, delete_report
 from agent_system.core.tracing import (
     emit_simple_event,
     init_trace,
@@ -16,6 +16,7 @@ from agent_system.core.tracing import (
 )
 from agent_system.tools.log_parser import summarize_log
 from agent_system.tools.report_title_tool import generate_report_title
+from agent_system.tools.report_rag_tool import add_report_to_knowledge_base
 from agent_api.config import service_config
 from agent_api.service_client import proxy_client
 from agent_api.health_monitor import (
@@ -109,6 +110,7 @@ def create_app() -> Flask:
         parent_event_id = data.get("parent_event_id")
         visited_services = data.get("visited_services")
         persist_report = data.get("persist_report")
+        response_mode = data.get("response_mode")
         
         if not isinstance(query, str) or not query.strip():
             return jsonify({"error": "Missing 'query' in JSON body"}), 400
@@ -123,6 +125,7 @@ def create_app() -> Flask:
                 parent_event_id=int(parent_event_id) if isinstance(parent_event_id, int) or (isinstance(parent_event_id, str) and parent_event_id.isdigit()) else None,
                 visited_services=visited_services if isinstance(visited_services, list) else None,
                 persist_report=persist_report if isinstance(persist_report, bool) else None,
+                response_mode=response_mode if isinstance(response_mode, str) else None,
             )
             duration_ms = int((time.time() - start) * 1000)
             
@@ -152,6 +155,9 @@ def create_app() -> Flask:
         incoming_trace_id = data.get("trace_id")
         incoming_parent_event_id = data.get("parent_event_id")
         persist_report = data.get("persist_report")
+        response_mode = data.get("response_mode")
+        if not isinstance(response_mode, str) or not response_mode.strip():
+            response_mode = "user"
         if persist_report is None:
             persist_report = True
         if not isinstance(visited_services, list):
@@ -193,6 +199,7 @@ def create_app() -> Flask:
             reply = analyze_log_with_main_agent(
                 query,
                 visited_services=visited_services,
+                response_mode=response_mode,
             )
             duration_ms = int((time.time() - start) * 1000)
             logger.info(f"we got reply {reply}")
@@ -252,6 +259,13 @@ def create_app() -> Flask:
         except Exception as e:
             return jsonify({"error": "Failed to fetch reports", "details": str(e)}), 500
 
+    @app.get("/api/reports/count")
+    def api_report_count():
+        try:
+            return jsonify({"count": count_reports()}), 200
+        except Exception as e:
+            return jsonify({"error": "Failed to count reports", "details": str(e)}), 500
+
     @app.get("/api/reports/<rid>")
     def api_get_report(rid: str):
         try:
@@ -265,6 +279,62 @@ def create_app() -> Flask:
             return jsonify(data), 200
         except Exception as e:
             return jsonify({"error": "Failed to fetch report", "details": str(e)}), 500
+
+    @app.post("/api/reports/<rid>/memory")
+    def api_save_report_memory(rid: str):
+        try:
+            try:
+                rid_int = int(rid)
+            except ValueError:
+                return jsonify({"error": "Invalid report id"}), 400
+            data = get_report(rid_int)
+            if not data:
+                return jsonify({"error": "Report not found"}), 404
+
+            created_at = data.get("created_at")
+            if hasattr(created_at, "isoformat"):
+                created_at = created_at.isoformat()
+
+            report_text = data.get("content") or ""
+            title = data.get("title")
+            if title:
+                report_text = f"{title}\n\n{report_text}"
+            raw_log = data.get("raw_log")
+            if raw_log:
+                report_text = f"{report_text}\n\nRaw log:\n{raw_log}"
+
+            report_meta = {
+                "service": data.get("service"),
+                "report_id": rid_int,
+                "trace_id": data.get("trace_id"),
+                "level": data.get("level"),
+                "title": title,
+                "created_at": created_at,
+                "raw_log": raw_log,
+                "source": "generated_report",
+            }
+            rag_result = add_report_to_knowledge_base(report_text, report_meta)
+            if isinstance(rag_result, dict) and not rag_result.get("success", True):
+                return jsonify({"error": rag_result.get("error", "Failed to save report to memory")}), 500
+
+            return jsonify({"success": True, "message": "Report saved to memory"}), 200
+        except Exception as e:
+            return jsonify({"error": "Failed to save report to memory", "details": str(e)}), 500
+
+    @app.delete("/api/reports/<rid>")
+    def api_delete_report(rid: str):
+        try:
+            try:
+                rid_int = int(rid)
+            except ValueError:
+                return jsonify({"error": "Invalid report id"}), 400
+
+            if not delete_report(rid_int):
+                return jsonify({"error": "Report not found"}), 404
+
+            return jsonify({"success": True, "deleted": rid_int}), 200
+        except Exception as e:
+            return jsonify({"error": "Failed to delete report", "details": str(e)}), 500
 
     @app.get("/api/reports/<rid>/events")
     def api_get_report_events(rid: str):

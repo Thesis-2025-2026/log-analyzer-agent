@@ -16,6 +16,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 ANOM_CHANNEL = os.getenv("ANOM_CHANNEL", "anomalies")
+ANOM_QUEUE_KEY = os.getenv("ANOM_QUEUE_KEY") or f"{ANOM_CHANNEL}:queue"
 
 SERVICE_URL = (os.getenv("AGENT_API_URL") or os.getenv("SERVICE_URL") or "http://localhost:8000").rstrip("/")
 AGENT_API_TIMEOUT_SECONDS = int(os.getenv("AGENT_API_TIMEOUT_SECONDS", "600"))
@@ -36,7 +37,9 @@ def main():
     for message in pubsub.listen():
         if message["type"] == "message":
             try:
-                anomaly = json.loads(message["data"])
+                raw_data = message["data"]
+                raw_text = raw_data.decode("utf-8") if isinstance(raw_data, (bytes, bytearray)) else str(raw_data)
+                anomaly = json.loads(raw_text)
                 print("\n🚨 AI Agent received anomaly:", anomaly)
                 logger.info(
                     "Investigating anomaly from detector",
@@ -76,6 +79,10 @@ def main():
                 print("✅ Analysis complete.")
                 if data.get("report_id") is not None:
                     print(f"💾 Report stored with ID: {data.get('report_id')}")
+                    try:
+                        r.lrem(ANOM_QUEUE_KEY, 1, raw_text)
+                    except Exception:
+                        pass
                 if data.get("trace_id"):
                     print(f"🧵 trace_id: {data.get('trace_id')}")
                 if data.get("reply"):

@@ -4,17 +4,13 @@ Cross-Service Communication Tool for the Main Agent.
 This tool enables the Main Agent to:
 1. Discover available services from the proxy
 2. Get analysis reports from specific services
-3. Gather reports from multiple services for comprehensive analysis
-
 The Main Agent can use these tools to leverage knowledge from other deployed
-service clusters and produce comprehensive final reports that incorporate
-cross-service context.
+service clusters and produce concise cross-service context.
 """
 import logging
 import time
 import requests
 from typing import List, Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from contextvars import ContextVar
 from agent_system.core.tracing import get_trace_id, get_parent_event_id, instrument_http_call
@@ -24,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment
 PROXY_URL = os.getenv("PROXY_URL", "http://localhost:8000")
-REQUEST_TIMEOUT = int(os.getenv("CROSS_SERVICE_TIMEOUT", "60"))
+REQUEST_TIMEOUT = int(os.getenv("CROSS_SERVICE_TIMEOUT", "240"))
 CURRENT_SERVICE_NAME = os.getenv("SERVICE_NAME", "").strip()
 
 # Rate limit handling
@@ -140,14 +136,14 @@ def discover_services(capability: Optional[str] = None) -> str:
         return f"Error discovering services: {str(e)}"
 
 
-def get_service_report(service_name: str, error_context: str) -> str:
+def get_service_report(service_name: str, query: str) -> str:
     """
     Get an analysis report from a specific service's agent.
     
-    This tool discovers a service via the proxy, sends the error context
-    to that service's Main Agent for analysis, and returns their report.
-    The remote service will analyze the error from its perspective using
-    its own Internal Knowledge Agent and local databases.
+    This tool discovers a service via the proxy, sends the query
+    to that service's Main Agent, and returns their report. The remote
+    service will analyze the request from its perspective using its own
+    Internal Knowledge Agent and local databases.
     
     Use this tool when you need context from a specific service about an
     error that may be related to or affected by that service.
@@ -155,14 +151,12 @@ def get_service_report(service_name: str, error_context: str) -> str:
     Args:
         service_name: The name of the service to query (e.g., "order-service",
                      "payment-service"). Must be a registered service.
-        error_context: The error log or context to analyze. This will be
-                      sent to the remote service for analysis.
+        query: The query or context to analyze. This will be sent as-is
+               to the remote service for analysis.
     
     Returns:
         A formatted string containing:
-        - The remote service's analysis report
-        - Any relevant historical context from that service
-        - Recommendations from that service's perspective
+         what the remote system responds with
         
         If the service is unavailable, returns an error message.
     
@@ -217,13 +211,12 @@ def get_service_report(service_name: str, error_context: str) -> str:
         trace_id = get_trace_id()
         parent_event_id = get_parent_event_id()
         query_body = {
-            "query": f"Analyze this error from the perspective of {service_name}. "
-                    f"Provide relevant context from your service's logs and knowledge base.\n\n"
-                    f"Error context:\n{error_context}",
+            "query": query,
             "visited_services": outgoing_visited,
             "trace_id": trace_id,
             "parent_event_id": parent_event_id,
             "persist_report": False,
+            "response_mode": "service",
         }
         query_url = f"{service_url}/api/query"
 
@@ -281,152 +274,3 @@ def get_service_report(service_name: str, error_context: str) -> str:
     except Exception as e:
         logger.error(f"Error querying service {service_name}: {e}")
         return f"Error querying service '{service_name}': {str(e)}"
-
-
-def gather_cross_service_reports(
-    error_context: str,
-    service_names: Optional[str] = None
-) -> str:
-    """
-    Gather analysis reports from multiple services in parallel.
-    
-    This tool discovers available services (or uses specified ones),
-    queries each service for their analysis of the error, and aggregates
-    all reports into a comprehensive cross-service context.
-    
-    Use this tool when you need a holistic view of an error's impact
-    across multiple services in the distributed system.
-    
-    Args:
-        error_context: The error log or context to analyze. This will be
-                      sent to each service for analysis.
-        service_names: Optional comma-separated list of service names to query
-                      (e.g., "order-service,inventory-service").
-                      If not provided, queries all available healthy services.
-    
-    Returns:
-        A formatted string containing:
-        - Summary of services queried
-        - Individual reports from each service
-        - Aggregated insights
-        
-        Reports are gathered in parallel for efficiency.
-    
-    Example:
-        >>> gather_cross_service_reports("Database connection error...")
-        "Cross-Service Analysis Report
-         =============================
-         Services queried: 3
-         
-         [order-service]: No related issues detected
-         [payment-service]: 2 transactions pending
-         [inventory-service]: Database read errors observed
-         
-         Summary: Error may be affecting payment and inventory services."
-    """
-    try:
-        visited = _get_visited_services()
-
-        # Determine which services to query
-        if service_names:
-            target_services = [s.strip() for s in service_names.split(",") if s.strip()]
-        else:
-            # Discover all healthy services
-            url = f"{PROXY_URL}/services"
-            response = instrument_http_call(
-                target_service="proxy",
-                method="GET",
-                url=url,
-                request_body={"params": {"healthy_only": True}},
-                call_fn=lambda: requests.get(url, params={"healthy_only": True}, timeout=10),
-            )
-            
-            if response.status_code != 200:
-                return "Failed to discover services from proxy"
-            
-            data = response.json()
-            services = data.get("services", [])
-            target_services = [s.get("name") for s in services if s.get("name")]
-        
-        if not target_services:
-            return "No services available to query"
-
-        # Remove already-visited services to avoid ping-pong cycles
-        if visited:
-            target_services = [svc for svc in target_services if svc not in visited]
-        if not target_services:
-            return "All candidate services were already visited; skipping cross-service queries."
-        
-        # Query services in parallel
-        reports = {}
-        errors = {}
-
-        visited_snapshot = _with_current_service(visited)
-
-        with ThreadPoolExecutor(max_workers=min(5, len(target_services))) as executor:
-            def _call_service(service: str) -> str:
-                # Ensure visited context is available in worker threads
-                set_visited_services(visited_snapshot)
-                return get_service_report(service, error_context)
-
-            future_to_service = {
-                executor.submit(_call_service, svc): svc
-                for svc in target_services
-            }
-            
-            def _is_error_report(text: str) -> bool:
-                if not isinstance(text, str):
-                    return True
-                lowered = text.strip().lower()
-                if looks_rate_limited(text):
-                    return True
-                return (
-                    lowered.startswith("error ")
-                    or lowered.startswith("error:")
-                    or lowered.startswith("failed ")
-                    or " query failed:" in lowered
-                    or "failed to connect" in lowered
-                    or "timed out" in lowered
-                )
-
-            for future in as_completed(future_to_service):
-                service = future_to_service[future]
-                try:
-                    report = future.result()
-                    if _is_error_report(report):
-                        errors[service] = report
-                    else:
-                        reports[service] = report
-                except Exception as e:
-                    errors[service] = str(e)
-        
-        # Format the aggregated response
-        result_parts = []
-        result_parts.append("=" * 60)
-        result_parts.append("CROSS-SERVICE ANALYSIS REPORT")
-        result_parts.append("=" * 60)
-        result_parts.append(f"\nServices queried: {len(target_services)}")
-        result_parts.append(f"Successful responses: {len(reports)}")
-        result_parts.append(f"Failed queries: {len(errors)}")
-        result_parts.append("\n" + "-" * 60)
-        
-        # Add successful reports
-        if reports:
-            result_parts.append("\n[SUCCESSFUL SERVICE REPORTS]\n")
-            for service, report in reports.items():
-                result_parts.append(report)
-                result_parts.append("\n" + "-" * 40 + "\n")
-        
-        # Add error summary
-        if errors:
-            result_parts.append("\n[SERVICES WITH ERRORS]\n")
-            for service, error in errors.items():
-                result_parts.append(f"- {service}: {error[:100]}...")
-        
-        result_parts.append("\n" + "=" * 60)
-        
-        return "\n".join(result_parts)
-        
-    except Exception as e:
-        logger.error(f"Error gathering cross-service reports: {e}")
-        return f"Error gathering cross-service reports: {str(e)}"

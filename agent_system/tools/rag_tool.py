@@ -4,7 +4,7 @@ Uses CAMEL-AI's retriever functionality for vector database integration.
 
 Uses OpenAI's text-embedding-3-small model (1536 dimensions) for generating embeddings.
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import os
 from camel.retrievers import VectorRetriever
 from camel.embeddings import OpenAIEmbedding
@@ -87,6 +87,71 @@ def _get_vector_retriever() -> Optional[Any]:
 _retriever_cache: Optional[Any] = None
 
 
+def _format_rag_results(results: List[Any]) -> List[Dict[str, Any]]:
+    formatted_results = []
+    for result in results:
+        # Extract content - prefer 'fix' field from payload, fallback to content/text
+        content = None
+        metadata = {}
+
+        # Try to get payload/metadata from result
+        if hasattr(result, 'payload'):
+            payload = result.payload
+            # Prefer the 'fix' field if available (most relevant for error fixes)
+            content = payload.get('fix') or payload.get('text') or payload.get('content')
+            # Extract metadata (all payload fields except text/error/fix)
+            metadata = {k: v for k, v in payload.items()
+                       if k not in ['text', 'error', 'fix', 'content']}
+        elif hasattr(result, 'content'):
+            content = result.content
+        elif hasattr(result, 'text'):
+            content = result.text
+        else:
+            content = str(result)
+
+        # Get metadata from result.metadata if available
+        if hasattr(result, 'metadata') and result.metadata:
+            metadata.update(result.metadata)
+
+        # Get score
+        score = result.score if hasattr(result, 'score') else 0.0
+
+        formatted_results.append({
+            "content": content or "No content available",
+            "score": score,
+            "metadata": metadata
+        })
+
+    return formatted_results
+
+
+def _is_no_results(formatted: List[Dict[str, Any]]) -> bool:
+    if not formatted:
+        return True
+    if len(formatted) != 1:
+        return False
+    entry = formatted[0]
+    if "error" in entry:
+        return False
+    text = " ".join(
+        str(entry.get(key, "")) for key in ("message", "content", "suggestion", "warning")
+    ).lower()
+    return (
+        "no similar fixes found" in text
+        or "no suitable information retrieved" in text
+    )
+
+
+def _query_with_threshold(retriever: Any, query: str, top_k: int, threshold: float) -> Tuple[List[Any], bool]:
+    try:
+        return retriever.query(query=query, top_k=top_k, similarity_threshold=threshold), True
+    except TypeError:
+        try:
+            return retriever.query(query=query, top_k=top_k, score_threshold=threshold), True
+        except TypeError:
+            return retriever.query(query=query, top_k=top_k), False
+
+
 def search_fixes_for_error(error_log: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """
     Search the vector database for fixes and solutions related to an error log.
@@ -120,49 +185,47 @@ def search_fixes_for_error(error_log: str, top_k: int = 5) -> List[Dict[str, Any
         top_k = min(max(1, top_k), 20)
         
 
-        results = _retriever_cache.query(
-            query=error_log,
-            top_k=top_k
-        )
-        
-        # Format results
-        formatted_results = []
-        for result in results:
-            # Extract content - prefer 'fix' field from payload, fallback to content/text
-            content = None
-            metadata = {}
-            
-            # Try to get payload/metadata from result
-            if hasattr(result, 'payload'):
-                payload = result.payload
-                # Prefer the 'fix' field if available (most relevant for error fixes)
-                content = payload.get('fix') or payload.get('text') or payload.get('content')
-                # Extract metadata (all payload fields except text/error/fix)
-                metadata = {k: v for k, v in payload.items() 
-                           if k not in ['text', 'error', 'fix', 'content']}
-            elif hasattr(result, 'content'):
-                content = result.content
-            elif hasattr(result, 'text'):
-                content = result.text
-            else:
-                content = str(result)
-            
-            # Get metadata from result.metadata if available
-            if hasattr(result, 'metadata') and result.metadata:
-                metadata.update(result.metadata)
-            
-            # Get score
-            score = result.score if hasattr(result, 'score') else 0.0
-            
-            formatted_results.append({
-                "content": content or "No content available",
-                "score": score,
-                "metadata": metadata
-            })
-        
-        return formatted_results if formatted_results else [{
+        start_threshold = float(os.getenv("RAG_SIMILARITY_START", "0.7"))
+        step = float(os.getenv("RAG_SIMILARITY_STEP", "0.1"))
+        if step <= 0:
+            step = 0.1
+        start_threshold = max(0.0, min(1.0, start_threshold))
+
+        thresholds = []
+        current = start_threshold
+        while current > 0:
+            thresholds.append(round(current, 2))
+            current -= step
+        if not thresholds or thresholds[-1] != 0.0:
+            thresholds.append(0.0)
+
+        threshold_supported = True
+        for idx, threshold in enumerate(thresholds):
+            results, threshold_supported = _query_with_threshold(
+                _retriever_cache,
+                query=str(error_log),
+                top_k=top_k,
+                threshold=threshold,
+            )
+            formatted_results = _format_rag_results(results)
+            if not _is_no_results(formatted_results):
+                if threshold_supported and idx > 0:
+                    formatted_results.insert(0, {
+                        "message": (
+                            "No suitable results at higher similarity. "
+                            f"Lowered similarity threshold to {threshold:.2f}."
+                        ),
+                        "warning": "Results may be less precise; verify relevance.",
+                        "similarity_threshold": threshold,
+                    })
+                return formatted_results
+            if not threshold_supported:
+                break
+
+        return [{
             "message": "No similar fixes found in the knowledge base",
-            "suggestion": "This may be a new error that hasn't been seen before"
+            "suggestion": "This may be a new error that hasn't been seen before",
+            "note": "Similarity threshold was lowered down to 0.0 with no results."
         }]
     except Exception as e:
         return [{

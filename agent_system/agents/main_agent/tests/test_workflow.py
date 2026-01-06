@@ -24,15 +24,15 @@ class DummyResp:
 def test_workflow_success(monkeypatch):
     dummy = DummyAgent([DummyResp("ok")])
     import agent_system.agents.main_agent.workflow as wf
-    monkeypatch.setattr(wf, "make_main_agent", lambda: dummy)
+    monkeypatch.setattr(wf, "make_main_agent", lambda **_: dummy)
     out = workflow.analyze_log_with_main_agent("log text", max_retries=2, visited_services=["svc1"])
-    assert "LOG ANALYSIS REPORT" in out
+    assert "ok" in out
     assert dummy.calls == 1
 
 
 def test_workflow_retries_and_formats_error(monkeypatch):
     dummy = DummyAgent([Exception("boom"), Exception("boom2")])
     import agent_system.agents.main_agent.workflow as wf
-    monkeypatch.setattr(wf, "make_main_agent", lambda: dummy)
+    monkeypatch.setattr(wf, "make_main_agent", lambda **_: dummy)
     out = workflow.analyze_log_with_main_agent("log text", max_retries=2)
-    assert "LOG ANALYSIS REPORT - ERROR" in out
+    assert "Analysis Failed" in out

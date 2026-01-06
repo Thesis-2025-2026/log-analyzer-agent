@@ -8,8 +8,10 @@ from camel.toolkits import FunctionTool
 from agent_system.core.model_factory import create_model
 from agent_system.core.tracing import get_parent_event_id, get_trace_id, trace_tool_bound
 from agent_system.prompts.internal_knowledge import get_internal_knowledge_prompt
-from agent_system.tools.db_tool import query_logs, get_logs_by_error_pattern
+from agent_system.tools.db_tool import query_logs_sql, query_logs_by_time_range
 from agent_system.tools.rag_tool import search_fixes_for_error
+from agent_system.tools.report_rag_tool import search_reports_for_context
+from agent_system.tools.time_tool import get_current_time
 
 
 def make_internal_knowledge_agent() -> ChatAgent:
@@ -24,7 +26,7 @@ def make_internal_knowledge_agent() -> ChatAgent:
     tools = [
         FunctionTool(
             trace_tool_bound(
-                query_logs,
+                query_logs_sql,
                 trace_id=trace_id,
                 parent_event_id=parent_event_id,
                 service_name=service_name,
@@ -33,7 +35,7 @@ def make_internal_knowledge_agent() -> ChatAgent:
         ),
         FunctionTool(
             trace_tool_bound(
-                get_logs_by_error_pattern,
+                query_logs_by_time_range,
                 trace_id=trace_id,
                 parent_event_id=parent_event_id,
                 service_name=service_name,
@@ -43,6 +45,24 @@ def make_internal_knowledge_agent() -> ChatAgent:
         FunctionTool(
             trace_tool_bound(
                 search_fixes_for_error,
+                trace_id=trace_id,
+                parent_event_id=parent_event_id,
+                service_name=service_name,
+                agent_name="Internal Knowledge Agent",
+            )
+        ),
+        FunctionTool(
+            trace_tool_bound(
+                search_reports_for_context,
+                trace_id=trace_id,
+                parent_event_id=parent_event_id,
+                service_name=service_name,
+                agent_name="Internal Knowledge Agent",
+            )
+        ),
+        FunctionTool(
+            trace_tool_bound(
+                get_current_time,
                 trace_id=trace_id,
                 parent_event_id=parent_event_id,
                 service_name=service_name,
