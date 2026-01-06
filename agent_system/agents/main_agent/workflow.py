@@ -2,33 +2,12 @@
 Main Agent workflow for log analysis.
 """
 import logging
-import os
-import time
-from typing import Optional, List
+from typing import Optional
 
-from agent_system.tools.cross_service_tool import (
-    set_visited_services,
-    CURRENT_SERVICE_NAME,
-)
-from agent_system.core.tracing import instrument_agent_step
-from agent_system.core.rate_limit import looks_rate_limited, compute_sleep_seconds
 logger = logging.getLogger(__name__)
 
-RATE_LIMIT_BASE_SLEEP_SECONDS = float(os.getenv("AGENT_RATE_LIMIT_BASE_SLEEP_SECONDS", "1.0"))
-RATE_LIMIT_MAX_SLEEP_SECONDS = float(os.getenv("AGENT_RATE_LIMIT_MAX_SLEEP_SECONDS", "30"))
 
-
-def make_main_agent():
-    """Factory wrapper to allow monkeypatching in tests."""
-    from agent_system.agents.main_agent import make_main_agent as factory
-    return factory()
-
-
-def analyze_log_with_main_agent(
-    log_data: str,
-    max_retries: int = 3,
-    visited_services: Optional[List[str]] = None,
-) -> str:
+def analyze_log_with_main_agent(log_data: str, max_retries: int = 3) -> str:
     """
     Analyze a log using the Main Agent.
     
@@ -48,12 +27,9 @@ def analyze_log_with_main_agent(
     """
     logger.info("Starting log analysis with Main Agent")
     logger.debug(f"Log data: {log_data[:200]}...")
-
-    # Seed visited-services context to prevent cycles
-    visited = list(visited_services or [])
-    if CURRENT_SERVICE_NAME and CURRENT_SERVICE_NAME not in visited:
-        visited.append(CURRENT_SERVICE_NAME)
-    set_visited_services(visited)
+    
+    # Import here to avoid circular dependencies
+    from agent_system.agents.main_agent import make_main_agent
     
     # Construct the analysis prompt
     prompt = (
@@ -73,11 +49,7 @@ def analyze_log_with_main_agent(
     for attempt in range(1, max_retries + 1):
         try:
             logger.info(f"[Main Agent] Attempt {attempt}/{max_retries}")
-            response = instrument_agent_step(
-                "Main Agent",
-                prompt,
-                lambda: main_agent.step(prompt),
-            )
+            response = main_agent.step(prompt)
             
             # Extract content from response
             content = None
@@ -101,22 +73,7 @@ def analyze_log_with_main_agent(
             logger.warning(f"[Main Agent] Attempt {attempt}/{max_retries} failed: {last_error}")
             
             if attempt < max_retries:
-                if looks_rate_limited(last_error):
-                    sleep_s = compute_sleep_seconds(
-                        last_error,
-                        attempt=attempt,
-                        base_seconds=RATE_LIMIT_BASE_SLEEP_SECONDS,
-                        max_seconds=RATE_LIMIT_MAX_SLEEP_SECONDS,
-                    )
-                    logger.warning(
-                        "[Main Agent] Rate-limited; sleeping %.2fs before retry (%d/%d).",
-                        sleep_s,
-                        attempt,
-                        max_retries,
-                    )
-                    time.sleep(sleep_s)
-                else:
-                    logger.info(f"[Main Agent] Retrying...")
+                logger.info(f"[Main Agent] Retrying...")
             else:
                 logger.error(f"[Main Agent] All {max_retries} attempts failed. Last error: {last_error}")
     
@@ -126,17 +83,32 @@ def analyze_log_with_main_agent(
 
 def _format_analysis_result(content: str, log_data: str) -> str:
     """Format the successful analysis result."""
-    # The UI renders Markdown; avoid noisy ASCII banners and return the agent output directly.
-    return content
+    result_parts = []
+    result_parts.append("=" * 80)
+    result_parts.append("LOG ANALYSIS REPORT")
+    result_parts.append("=" * 80)
+    result_parts.append(f"\nOriginal Log:\n{log_data}\n")
+    result_parts.append("-" * 80)
+    result_parts.append("\nAnalysis:\n")
+    result_parts.append(content)
+    result_parts.append("\n" + "=" * 80)
+    
+    return "\n".join(result_parts)
 
 
 def _format_error_result(log_data: str, error: Optional[str], max_retries: int) -> str:
     """Format the error result when analysis fails."""
-    parts = [
-        "## Analysis Failed",
-        "",
-        f"The Main Agent failed to complete the analysis after {max_retries} attempt(s).",
-    ]
+    result_parts = []
+    result_parts.append("=" * 80)
+    result_parts.append("LOG ANALYSIS REPORT - ERROR")
+    result_parts.append("=" * 80)
+    result_parts.append(f"\nOriginal Log:\n{log_data}\n")
+    result_parts.append("-" * 80)
+    result_parts.append("\nAnalysis Status: ✗ Failed")
+    result_parts.append(f"\nThe Main Agent failed to complete the analysis after {max_retries} attempts.")
     if error:
-        parts.extend(["", f"**Error:** `{error}`"])
-    return "\n".join(parts)
+        result_parts.append(f"Error: {error}")
+    result_parts.append("\n" + "=" * 80)
+    
+    return "\n".join(result_parts)
+
