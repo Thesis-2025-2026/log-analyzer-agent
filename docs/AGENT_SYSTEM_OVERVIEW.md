@@ -1,5 +1,9 @@
 # Agent System Overview
 
+> Legacy note: this document is retained for historical context.
+> For the implementation-aligned overview, use `docs/LATEST_AGENT_SYSTEM_OVERVIEW.md`.
+> Verified gap log: `docs/DOCS_GAP_CHECKLIST.md`.
+
 This document provides a comprehensive overview of the Log Analyzer Agent System architecture, components, and workflows.
 
 ## Table of Contents

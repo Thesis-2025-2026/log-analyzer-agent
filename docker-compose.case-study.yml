@@ -1,0 +1,47 @@
+# Case Study compose: full distributed stack + log generator + KB seed
+#
+# Usage:
+#   export OPENAI_API_KEY=sk-...
+#   docker compose -f docker-compose.case-study.yml up --build -d
+
+include:
+  - docker-compose.distributed.yml
+
+services:
+  # ── Log Generator ───────────────────────────────────────────────
+  log-generator:
+    build:
+      context: ../log-generator
+      dockerfile: Dockerfile
+    container_name: log-generator
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LOGS_PER_SECOND=2
+      - LOG_TO_CONSOLE=true
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  # ── Knowledge Base Seed (one-shot) ─────────────────────────────
+  seed-knowledge-base:
+    image: python:3.12-slim
+    container_name: seed-knowledge-base
+    working_dir: /seed
+    volumes:
+      - ./infra/seed_knowledge_base.py:/seed/seed_knowledge_base.py:ro
+    entrypoint: ["sh", "-c", "pip install --quiet openai qdrant-client && python seed_knowledge_base.py"]
+    environment:
+      - QDRANT_URL=http://service-auth-qdrant:6333
+      - QDRANT_COLLECTION=auth_log_fixes
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      service-auth-qdrant:
+        condition: service_started
+    networks:
+      - agent-network
+    restart: "no"

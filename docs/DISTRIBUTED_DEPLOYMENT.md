@@ -1,5 +1,9 @@
 # Distributed Agent System Deployment Guide
 
+> Legacy note: this document is retained for historical context.
+> For the implementation-aligned deployment guide, use `docs/LATEST_DISTRIBUTED_DEPLOYMENT.md`.
+> Verified gap log: `docs/DOCS_GAP_CHECKLIST.md`.
+
 This document describes how to deploy and use the distributed agent system with multiple service clusters and a central proxy/dispatcher for service discovery.
 
 ## Architecture Overview
