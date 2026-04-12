@@ -5,6 +5,14 @@
 - Uses LLM-powered agents (Main Agent + Internal Knowledge Agent) for error reasoning and resolution.
 - Supports both local single-service mode and distributed multi-service deployment.
 
+## Documentation Status
+
+For implementation-aligned documentation, use:
+
+- `docs/LATEST_AGENT_SYSTEM_OVERVIEW.md`
+- `docs/LATEST_DISTRIBUTED_DEPLOYMENT.md`
+- `docs/DOCS_GAP_CHECKLIST.md` (verified stale vs current gaps)
+
 ## Project Structure
 
 ```
@@ -12,7 +20,7 @@
 │   ├── agents/            # Main Agent and Internal Knowledge Agent
 │   ├── tools/             # Health check, internal knowledge, cross-service tools
 │   └── prompts/           # Agent system prompts
-├── agent_api/             # FastAPI service for agent interaction
+├── agent_api/             # Flask service for agent interaction
 ├── proxy_service/         # Service discovery proxy/dispatcher
 ├── web/                   # Frontend UI (Tailwind CSS)
 ├── infra/                 # Database init scripts and seeds
@@ -203,7 +211,7 @@ docker-compose -f docker-compose.distributed.yml down -v
 | `/services` | GET | List all registered services |
 | `/discover?capability=X` | GET | Find services by capability |
 | `/register` | POST | Register a new service |
-| `/heartbeat` | POST | Service heartbeat |
+| `/services/{name}/heartbeat` | POST | Service heartbeat |
 
 ### Agent Service (ports 8001, 8002)
 
@@ -265,6 +273,9 @@ Wait for containers to be healthy: `docker-compose -f docker-compose.distributed
 
 ## Documentation
 
-- [Agent System Overview](docs/AGENT_SYSTEM_OVERVIEW.md) - Architecture, agents, tools, and workflows
-- [Distributed Deployment Guide](docs/DISTRIBUTED_DEPLOYMENT.md) - Multi-service deployment and configuration
+- [Latest Agent System Overview](docs/LATEST_AGENT_SYSTEM_OVERVIEW.md) - Current architecture, API contract, and tracing model
+- [Latest Distributed Deployment Guide](docs/LATEST_DISTRIBUTED_DEPLOYMENT.md) - Current multi-service topology, channels, and operations
+- [Docs Gap Checklist](docs/DOCS_GAP_CHECKLIST.md) - Verified mismatches and maintenance baseline
+- [Legacy Agent System Overview](docs/AGENT_SYSTEM_OVERVIEW.md) - Historical reference
+- [Legacy Distributed Deployment Guide](docs/DISTRIBUTED_DEPLOYMENT.md) - Historical reference
 - [Test Notebook](test_distributed_system.ipynb) - Interactive testing scenarios
