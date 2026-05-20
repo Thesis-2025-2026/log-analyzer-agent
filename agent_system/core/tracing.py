@@ -231,6 +231,13 @@ def instrument_agent_step(agent_name: str, prompt: str, step_fn: Callable[[], An
         duration_ms = int((time.perf_counter() - start) * 1000)
         ended_at = _utcnow_iso()
         response_text = _truncate_text(_extract_response_text(result))
+        agent_call_data: Dict[str, Any] = {
+            "prompt": _truncate_text(prompt),
+            "response": response_text,
+        }
+        token_usage = _extract_token_usage(result)
+        if token_usage:
+            agent_call_data["token_usage"] = token_usage
         payload = {
             "trace_id": trace_id,
             "event_type": "agent",
@@ -242,10 +249,7 @@ def instrument_agent_step(agent_name: str, prompt: str, step_fn: Callable[[], An
             "duration_ms": duration_ms,
             "status": "ok",
             "seq": next_seq(),
-            "agent_call": {
-                "prompt": _truncate_text(prompt),
-                "response": response_text,
-            },
+            "agent_call": agent_call_data,
         }
         _emit_event(payload)
         return result
@@ -283,6 +287,23 @@ def _extract_response_text(response: Any) -> str:
     if isinstance(response, str):
         return response
     return str(response)
+
+
+def _extract_token_usage(response: Any) -> Optional[Dict[str, int]]:
+    """Extract token usage from a camel-ai ChatAgentResponse.info dict."""
+    if not hasattr(response, "info"):
+        return None
+    info = getattr(response, "info", None)
+    if not isinstance(info, dict):
+        return None
+    usage = info.get("usage", info.get("usage_dict"))
+    if isinstance(usage, dict) and usage.get("total_tokens"):
+        return {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+        }
+    return None
 
 
 def trace_tool(fn: Callable[..., T], *, tool_name: Optional[str] = None) -> Callable[..., T]:

@@ -3,6 +3,7 @@ psycopg2-binary
 python-dotenv
 camel-ai
 openai
+anthropic
 Flask
 flask-cors
 requests

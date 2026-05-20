@@ -1,0 +1,80 @@
+# Parallel experiment stack - NO host port mappings (uses docker exec for queries)
+services:
+  redis:
+    container_name: redis-exp2
+    ports: []
+  proxy-trace-postgres:
+    container_name: proxy-trace-postgres-exp2
+    ports: []
+  proxy:
+    container_name: proxy-exp2
+    ports: []
+  service-payment-postgres:
+    container_name: service-payment-postgres-exp2
+    ports: []
+  service-payment-qdrant:
+    container_name: service-payment-qdrant-exp2
+    ports: []
+  service-payment-api:
+    container_name: service-payment-api-exp2
+    ports: []
+  service-payment-detector:
+    container_name: service-payment-detector-exp2
+  service-payment-consumer:
+    container_name: service-payment-consumer-exp2
+  service-order-postgres:
+    container_name: service-order-postgres-exp2
+    ports: []
+  service-order-qdrant:
+    container_name: service-order-qdrant-exp2
+    ports: []
+  service-order-api:
+    container_name: service-order-api-exp2
+    ports: []
+  service-order-detector:
+    container_name: service-order-detector-exp2
+  service-order-consumer:
+    container_name: service-order-consumer-exp2
+  service-auth-postgres:
+    container_name: service-auth-postgres-exp2
+    ports: []
+  service-auth-qdrant:
+    container_name: service-auth-qdrant-exp2
+    ports: []
+  service-auth-api:
+    container_name: service-auth-api-exp2
+    ports: []
+  service-auth-detector:
+    container_name: service-auth-detector-exp2
+  service-auth-consumer:
+    container_name: service-auth-consumer-exp2
+  service-deployments-postgres:
+    container_name: service-deployments-postgres-exp2
+    ports: []
+  service-deployments-qdrant:
+    container_name: service-deployments-qdrant-exp2
+    ports: []
+  service-deployments-api:
+    container_name: service-deployments-api-exp2
+    ports: []
+  service-deployments-detector:
+    container_name: service-deployments-detector-exp2
+  service-deployments-consumer:
+    container_name: service-deployments-consumer-exp2
+  service-idp-postgres:
+    container_name: service-idp-postgres-exp2
+    ports: []
+  service-idp-qdrant:
+    container_name: service-idp-qdrant-exp2
+    ports: []
+  service-idp-api:
+    container_name: service-idp-api-exp2
+    ports: []
+  service-idp-detector:
+    container_name: service-idp-detector-exp2
+  service-idp-consumer:
+    container_name: service-idp-consumer-exp2
+  log-generator:
+    container_name: log-generator-exp2
+  seed-knowledge-base:
+    container_name: seed-knowledge-base-exp2

@@ -1,0 +1,51 @@
+# Env file overrides for parallel experiment (points to config-exp2/)
+services:
+  service-payment-api:
+    env_file:
+      - ./config-exp2/service-payment.env
+  service-payment-detector:
+    env_file:
+      - ./config-exp2/service-payment.env
+  service-payment-consumer:
+    env_file:
+      - ./config-exp2/service-payment.env
+
+  service-order-api:
+    env_file:
+      - ./config-exp2/service-order.env
+  service-order-detector:
+    env_file:
+      - ./config-exp2/service-order.env
+  service-order-consumer:
+    env_file:
+      - ./config-exp2/service-order.env
+
+  service-auth-api:
+    env_file:
+      - ./config-exp2/service-auth.env
+  service-auth-detector:
+    env_file:
+      - ./config-exp2/service-auth.env
+  service-auth-consumer:
+    env_file:
+      - ./config-exp2/service-auth.env
+
+  service-deployments-api:
+    env_file:
+      - ./config-exp2/service-deployments.env
+  service-deployments-detector:
+    env_file:
+      - ./config-exp2/service-deployments.env
+  service-deployments-consumer:
+    env_file:
+      - ./config-exp2/service-deployments.env
+
+  service-idp-api:
+    env_file:
+      - ./config-exp2/service-idp.env
+  service-idp-detector:
+    env_file:
+      - ./config-exp2/service-idp.env
+  service-idp-consumer:
+    env_file:
+      - ./config-exp2/service-idp.env
