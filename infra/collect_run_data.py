@@ -16,29 +16,33 @@ import psycopg2.extras
 
 POLL_INTERVAL = 3  # seconds between DB checks
 
-DB_AUTH = {
-    "host": os.getenv("AUTH_PG_HOST", "localhost"),
-    "port": int(os.getenv("AUTH_PG_PORT", "5435")),
-    "dbname": "auth_logs",
-    "user": "logs_user",
-    "password": "logs_pass",
+SERVICE_DBS = {
+    "auth": {
+        "host": os.getenv("AUTH_PG_HOST", "localhost"),
+        "port": int(os.getenv("AUTH_PG_PORT", "5435")),
+        "dbname": "auth_logs",
+        "user": "logs_user",
+        "password": "logs_pass",
+    },
+    "deployments": {
+        "host": os.getenv("DEPLOY_PG_HOST", "localhost"),
+        "port": int(os.getenv("DEPLOY_PG_PORT", "5436")),
+        "dbname": "deployments_logs",
+        "user": "logs_user",
+        "password": "logs_pass",
+    },
+    "idp": {
+        "host": os.getenv("IDP_PG_HOST", "localhost"),
+        "port": int(os.getenv("IDP_PG_PORT", "5437")),
+        "dbname": "idp_logs",
+        "user": "logs_user",
+        "password": "logs_pass",
+    },
 }
 
-DB_DEPLOYMENTS = {
-    "host": os.getenv("DEPLOY_PG_HOST", "localhost"),
-    "port": int(os.getenv("DEPLOY_PG_PORT", "5436")),
-    "dbname": "deployments_logs",
-    "user": "logs_user",
-    "password": "logs_pass",
-}
-
-DB_IDP = {
-    "host": os.getenv("IDP_PG_HOST", "localhost"),
-    "port": int(os.getenv("IDP_PG_PORT", "5437")),
-    "dbname": "idp_logs",
-    "user": "logs_user",
-    "password": "logs_pass",
-}
+DB_AUTH = SERVICE_DBS["auth"]
+DB_DEPLOYMENTS = SERVICE_DBS["deployments"]
+DB_IDP = SERVICE_DBS["idp"]
 
 DB_TRACE = {
     "host": os.getenv("TRACE_PG_HOST", "localhost"),
@@ -53,12 +57,13 @@ def connect(db_params):
     return psycopg2.connect(**db_params, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def poll_for_new_report(start_id, timeout):
-    """Block until a new report appears in auth_logs with id > start_id."""
+def poll_for_new_report(start_id, timeout, db=None):
+    """Block until a new report appears with id > start_id."""
+    db = db or DB_AUTH
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with connect(DB_AUTH) as conn:
+            with connect(db) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT id, created_at, level, service, title, trace_id, "
@@ -98,7 +103,8 @@ def get_trace_data(trace_id):
 
                 cur.execute(
                     "SELECT id, trace_id, service_name, agent_name, "
-                    "started_at, ended_at, duration_ms, status "
+                    "started_at, ended_at, duration_ms, status, "
+                    "prompt_tokens, completion_tokens, total_tokens "
                     "FROM agent_calls WHERE trace_id = %s ORDER BY id",
                     (trace_id,),
                 )
@@ -186,12 +192,15 @@ def main():
     parser.add_argument("--start-report-id", type=int, required=True)
     parser.add_argument("--timeout", type=int, default=300, help="Max seconds to wait for report")
     parser.add_argument("--output-dir", default="../../thesis/Resources/runs")
+    parser.add_argument("--service", default="auth", choices=list(SERVICE_DBS.keys()),
+                        help="Which service DB to poll for reports (default: auth)")
     args = parser.parse_args()
 
+    report_db = SERVICE_DBS[args.service]
     start_time = datetime.now(timezone.utc)
     print(f"Run {args.run_number}: waiting for new report (id > {args.start_report_id})...")
 
-    report = poll_for_new_report(args.start_report_id, args.timeout)
+    report = poll_for_new_report(args.start_report_id, args.timeout, db=report_db)
     if not report:
         print(f"Run {args.run_number}: TIMEOUT - no report appeared within {args.timeout}s")
         sys.exit(1)
@@ -213,6 +222,10 @@ def main():
     agent_call_count = 0
     http_call_count = 0
 
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    total_tokens = 0
+
     if trace_data:
         total_entries = len(trace_data["entries"])
         tool_call_count = len(trace_data["tool_calls"])
@@ -222,6 +235,12 @@ def main():
         for e in trace_data["entries"]:
             if e.get("service_name"):
                 services_involved.add(e["service_name"])
+
+        # Sum token usage from agent_calls
+        for ac in trace_data["agent_calls"]:
+            total_prompt_tokens += ac.get("prompt_tokens") or 0
+            total_completion_tokens += ac.get("completion_tokens") or 0
+            total_tokens += ac.get("total_tokens") or 0
 
         # Duration from agent_calls
         durations = [ac["duration_ms"] for ac in trace_data["agent_calls"] if ac.get("duration_ms")]
@@ -257,19 +276,24 @@ def main():
             "tool_call_count": tool_call_count,
             "agent_call_count": agent_call_count,
             "http_call_count": http_call_count,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+            "total_tokens": total_tokens,
         },
         "trace_breakdown": trace_data["entries"] if trace_data else [],
         "log_counts_since_start": log_counts,
     }
 
     os.makedirs(args.output_dir, exist_ok=True)
-    out_path = os.path.join(args.output_dir, f"run_{args.run_number:02d}.json")
+    out_path = os.path.join(args.output_dir, f"run_{args.run_number:03d}.json")
     with open(out_path, "w") as f:
         json.dump(run_data, f, indent=2, default=json_serial)
 
     print(f"Run {args.run_number}: saved to {out_path}")
     print(f"  Duration: {total_duration_ms}ms, Entries: {total_entries}, "
           f"Tools: {tool_call_count}, Services: {sorted(services_involved)}")
+    if total_tokens:
+        print(f"  Tokens: {total_prompt_tokens} prompt + {total_completion_tokens} completion = {total_tokens} total")
 
 
 if __name__ == "__main__":

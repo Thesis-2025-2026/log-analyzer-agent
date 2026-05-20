@@ -51,6 +51,9 @@ def main():
     content_lengths = []
     services_queried = []
     root_cause_correct = []
+    prompt_tokens_list = []
+    completion_tokens_list = []
+    total_tokens_list = []
 
     per_run_summary = []
 
@@ -70,6 +73,13 @@ def main():
         services_queried.append(ts["services_involved"])
         root_cause_correct.append(rpt["root_cause_correct"])
 
+        pt = ts.get("prompt_tokens", 0)
+        ct = ts.get("completion_tokens", 0)
+        tt = ts.get("total_tokens", 0)
+        prompt_tokens_list.append(pt)
+        completion_tokens_list.append(ct)
+        total_tokens_list.append(tt)
+
         per_run_summary.append({
             "run": run["run_number"],
             "duration_ms": dur,
@@ -83,6 +93,9 @@ def main():
             "report_length_chars": rpt["content_length"],
             "root_cause_correct": rpt["root_cause_correct"],
             "report_title": rpt.get("title", ""),
+            "prompt_tokens": pt,
+            "completion_tokens": ct,
+            "total_tokens": tt,
         })
 
     # Cross-service pattern analysis
@@ -109,6 +122,11 @@ def main():
         "agent_calls": compute_stats(agent_counts),
         "http_calls": compute_stats(http_counts),
         "report_length_chars": compute_stats(content_lengths),
+        "token_usage": {
+            "prompt_tokens": compute_stats(prompt_tokens_list),
+            "completion_tokens": compute_stats(completion_tokens_list),
+            "total_tokens": compute_stats(total_tokens_list),
+        },
         "root_cause_identification": {
             "correct": sum(root_cause_correct),
             "total": len(root_cause_correct),
@@ -141,6 +159,14 @@ def main():
           f"min={summary['tool_calls']['min']}, max={summary['tool_calls']['max']}")
     print(f"Trace entries: mean={summary['trace_entries']['mean']}, "
           f"min={summary['trace_entries']['min']}, max={summary['trace_entries']['max']}")
+    tk = summary["token_usage"]["total_tokens"]
+    if tk.get("mean"):
+        print(f"\nTokens (total): mean={tk['mean']}, "
+              f"median={tk['median']}, min={tk['min']}, max={tk['max']}")
+        pt_stats = summary["token_usage"]["prompt_tokens"]
+        ct_stats = summary["token_usage"]["completion_tokens"]
+        print(f"  Prompt:     mean={pt_stats['mean']}, median={pt_stats['median']}")
+        print(f"  Completion: mean={ct_stats['mean']}, median={ct_stats['median']}")
     print(f"\nRoot cause correct: {summary['root_cause_identification']['correct']}/"
           f"{summary['root_cause_identification']['total']} "
           f"({summary['root_cause_identification']['rate']}%)")
@@ -149,9 +175,10 @@ def main():
         print(f"  {pattern}: {count} runs")
     print(f"\nPer-run:")
     for r in per_run_summary:
+        tok_str = f"{r['total_tokens']:5d} tok" if r.get('total_tokens') else "    ? tok"
         print(f"  Run {r['run']:2d}: {r['duration_s']:5.1f}s | "
               f"{r['tool_calls']:2d} tools | {r['num_services_queried']} svcs | "
-              f"correct={r['root_cause_correct']}")
+              f"{tok_str} | correct={r['root_cause_correct']}")
 
 
 if __name__ == "__main__":

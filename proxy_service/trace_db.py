@@ -110,15 +110,18 @@ class PostgresTraceStore:
 
                 if event.event_type == "agent" and agent_call_id is None:
                     payload = agent_call_payload or {}
+                    token_usage = payload.get("token_usage") or {}
                     cur.execute(
                         """
                         INSERT INTO agent_calls (
                             trace_id, service_name, agent_name, prompt, response,
-                            started_at, ended_at, duration_ms, status, error
+                            started_at, ended_at, duration_ms, status, error,
+                            prompt_tokens, completion_tokens, total_tokens
                         )
                         VALUES (
                             %s, %s, %s, %s, %s,
-                            %s::timestamptz, %s::timestamptz, %s, %s, %s
+                            %s::timestamptz, %s::timestamptz, %s, %s, %s,
+                            %s, %s, %s
                         )
                         RETURNING id
                         """,
@@ -133,6 +136,9 @@ class PostgresTraceStore:
                             event.duration_ms,
                             event.status,
                             event.error,
+                            token_usage.get("prompt_tokens"),
+                            token_usage.get("completion_tokens"),
+                            token_usage.get("total_tokens"),
                         ),
                     )
                     agent_call_id = int(cur.fetchone()["id"])

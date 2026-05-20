@@ -53,7 +53,7 @@ done
 
 echo ""
 echo "[3/3] Seeding Qdrant vector databases..."
-python infra/seed_qdrant.py \
+python3 infra/seed_qdrant.py \
     --payment-url http://localhost:6333 \
     --order-url http://localhost:6334 \
     --auth-url http://localhost:6335 \
