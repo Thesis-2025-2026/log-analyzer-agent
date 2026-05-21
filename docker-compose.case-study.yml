@@ -18,7 +18,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - LOGS_PER_SECOND=2
+      - LOGS_PER_SECOND=1
       - LOG_TO_CONSOLE=true
     depends_on:
       redis:

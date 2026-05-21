@@ -157,29 +157,29 @@ services:
       - agent-network
     restart: unless-stopped
 
-  service-payment-consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: service-payment-consumer
-    command: ["python", "-m", "agent_system.connect_to_detector"]
-    env_file:
-      - ./config/service-payment.env
-    environment:
-      - REDIS_HOST=redis
-      - ANOM_CHANNEL=anomalies:payment
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_PROJECT=${OPENAI_PROJECT}
-      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-    depends_on:
-      redis:
-        condition: service_started
-      service-payment-postgres:
-        condition: service_healthy
-    networks:
-      - agent-network
-    restart: unless-stopped
+  # service-payment-consumer:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: service-payment-consumer
+  #   command: ["python", "-m", "agent_system.connect_to_detector"]
+  #   env_file:
+  #     - ./config/service-payment.env
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - ANOM_CHANNEL=anomalies:payment
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - OPENAI_PROJECT=${OPENAI_PROJECT}
+  #     - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+  #     - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+  #   depends_on:
+  #     redis:
+  #       condition: service_started
+  #     service-payment-postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - agent-network
+  #   restart: unless-stopped
 
   # ===========================================
   # SERVICE ORDER - Order Service Agent Cluster
@@ -267,29 +267,29 @@ services:
       - agent-network
     restart: unless-stopped
 
-  service-order-consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: service-order-consumer
-    command: ["python", "-m", "agent_system.connect_to_detector"]
-    env_file:
-      - ./config/service-order.env
-    environment:
-      - REDIS_HOST=redis
-      - ANOM_CHANNEL=anomalies:order
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_PROJECT=${OPENAI_PROJECT}
-      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-    depends_on:
-      redis:
-        condition: service_started
-      service-order-postgres:
-        condition: service_healthy
-    networks:
-      - agent-network
-    restart: unless-stopped
+  # service-order-consumer:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: service-order-consumer
+  #   command: ["python", "-m", "agent_system.connect_to_detector"]
+  #   env_file:
+  #     - ./config/service-order.env
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - ANOM_CHANNEL=anomalies:order
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - OPENAI_PROJECT=${OPENAI_PROJECT}
+  #     - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+  #     - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+  #   depends_on:
+  #     redis:
+  #       condition: service_started
+  #     service-order-postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - agent-network
+  #   restart: unless-stopped
 
   # ===========================================
   # SERVICE AUTH - Auth Service Agent Cluster
@@ -370,6 +370,7 @@ services:
       - REDIS_HOST=redis
       - LOGS_CHANNEL=logs:auth
       - ANOM_CHANNEL=anomalies:auth
+      - SIM_TTL_SEC=150
     depends_on:
       redis:
         condition: service_started
@@ -491,29 +492,29 @@ services:
       - agent-network
     restart: unless-stopped
 
-  service-deployments-consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: service-deployments-consumer
-    command: ["python", "-m", "agent_system.connect_to_detector"]
-    env_file:
-      - ./config/service-deployments.env
-    environment:
-      - REDIS_HOST=redis
-      - ANOM_CHANNEL=anomalies:deployments
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_PROJECT=${OPENAI_PROJECT}
-      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-    depends_on:
-      redis:
-        condition: service_started
-      service-deployments-postgres:
-        condition: service_healthy
-    networks:
-      - agent-network
-    restart: unless-stopped
+  # service-deployments-consumer:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: service-deployments-consumer
+  #   command: ["python", "-m", "agent_system.connect_to_detector"]
+  #   env_file:
+  #     - ./config/service-deployments.env
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - ANOM_CHANNEL=anomalies:deployments
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - OPENAI_PROJECT=${OPENAI_PROJECT}
+  #     - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+  #     - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+  #   depends_on:
+  #     redis:
+  #       condition: service_started
+  #     service-deployments-postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - agent-network
+  #   restart: unless-stopped
 
   # ===========================================
   # SERVICE IDP - Identity Provider Agent Cluster
@@ -603,29 +604,29 @@ services:
       - agent-network
     restart: unless-stopped
 
-  service-idp-consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: service-idp-consumer
-    command: ["python", "-m", "agent_system.connect_to_detector"]
-    env_file:
-      - ./config/service-idp.env
-    environment:
-      - REDIS_HOST=redis
-      - ANOM_CHANNEL=anomalies:idp
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_PROJECT=${OPENAI_PROJECT}
-      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-    depends_on:
-      redis:
-        condition: service_started
-      service-idp-postgres:
-        condition: service_healthy
-    networks:
-      - agent-network
-    restart: unless-stopped
+  # service-idp-consumer:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: service-idp-consumer
+  #   command: ["python", "-m", "agent_system.connect_to_detector"]
+  #   env_file:
+  #     - ./config/service-idp.env
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - ANOM_CHANNEL=anomalies:idp
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - OPENAI_PROJECT=${OPENAI_PROJECT}
+  #     - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+  #     - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+  #   depends_on:
+  #     redis:
+  #       condition: service_started
+  #     service-idp-postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - agent-network
+  #   restart: unless-stopped
 
 # ===========================================
 # NETWORKS

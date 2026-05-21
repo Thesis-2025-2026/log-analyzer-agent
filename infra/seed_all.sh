@@ -13,6 +13,10 @@ echo "=============================================="
 echo "Seeding Distributed Demo Databases"
 echo "=============================================="
 
+echo ""
+echo "[0/3] Installing Python dependencies for seeding..."
+pip install --quiet qdrant-client openai python-dotenv
+
 # Load environment variables
 if [ -f .env ]; then
     export $(cat .env | grep -v '^#' | xargs)
