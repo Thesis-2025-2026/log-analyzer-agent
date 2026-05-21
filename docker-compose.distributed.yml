@@ -370,6 +370,7 @@ services:
       - REDIS_HOST=redis
       - LOGS_CHANNEL=logs:auth
       - ANOM_CHANNEL=anomalies:auth
+      - SIM_TTL_SEC=150
     depends_on:
       redis:
         condition: service_started
