@@ -1,7 +1,12 @@
 # Local LLM via Ollama (OpenAI-compatible)
-OPENAI_BASE_URL=http://localhost:11434/v1
-OPENAI_API_KEY=ollama
-MODEL_NAME=phi3:mini
+# OPENAI_BASE_URL=http://localhost:11434/v1
+# OPENAI_API_KEY=ollama
+# MODEL_NAME=phi3:mini
+
+# For running agents using Open AI API
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
+MODEL_NAME=gpt-5-mini-2025-08-07
 
 # OpenAI Embeddings (for vector database)
 # Set these to use OpenAI's text-embedding-3-small model
